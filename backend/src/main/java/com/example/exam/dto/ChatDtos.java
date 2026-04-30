@@ -12,7 +12,9 @@ public class ChatDtos {
             @NotBlank String question,
             String model,
             String apiKey,
-            String endpoint
+            String endpoint,
+            String aiRole,
+            String systemPrompt
     ) {
     }
 

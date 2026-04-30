@@ -43,7 +43,7 @@ public class ChatService {
                 .limit(5)
                 .map(chunk -> new Source(chunk.getFile().getId(), chunk.getFile().getOriginalName(), excerpt(chunk.getContent())))
                 .toList();
-        String prompt = buildPrompt(request.mode(), request.question(), chunks);
+        String prompt = buildPrompt(request.mode(), request.question(), chunks, request.aiRole(), request.systemPrompt());
         String answer = callModel(request, prompt);
         if (answer == null || answer.isBlank()) {
             answer = localAnswer(request.mode(), chunks);
@@ -71,10 +71,20 @@ public class ChatService {
         return score;
     }
 
-    private String buildPrompt(QuestionMode mode, String question, List<KnowledgeChunk> chunks) {
+    private String buildPrompt(QuestionMode mode, String question, List<KnowledgeChunk> chunks, String aiRole, String systemPrompt) {
         String context = String.join("\n---\n", chunks.stream().map(KnowledgeChunk::getContent).toList());
+        String role = aiRole == null || aiRole.isBlank() ? "智能考研答疑助手" : aiRole.trim();
+        String customInstruction = systemPrompt == null || systemPrompt.isBlank()
+                ? "回答要准确、克制，并优先依据知识库内容。"
+                : systemPrompt.trim();
         if (mode == QuestionMode.TEACHER) {
             return """
+                    Role:
+                    %s
+
+                    Additional instruction:
+                    %s
+
                     You are a student in a postgraduate entrance exam review session, and the user is the teacher.
                     Based only on the knowledge base below, ask the user one progressive question, then keep probing after the user answers.
 
@@ -83,9 +93,15 @@ public class ChatService {
 
                     User input:
                     %s
-                    """.formatted(context, question);
+                    """.formatted(role, customInstruction, context, question);
         }
         return """
+                Role:
+                %s
+
+                Additional instruction:
+                %s
+
                 You are a smart postgraduate entrance exam Q&A assistant.
                 Answer only from the knowledge base below and mention traceable evidence.
 
@@ -94,7 +110,7 @@ public class ChatService {
 
                 User question:
                 %s
-                """.formatted(context, question);
+                """.formatted(role, customInstruction, context, question);
     }
 
     private String callModel(ChatRequest request, String prompt) {
