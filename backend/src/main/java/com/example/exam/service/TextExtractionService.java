@@ -1,10 +1,11 @@
 package com.example.exam.service;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -20,7 +21,7 @@ import org.springframework.stereotype.Service;
 public class TextExtractionService {
     private final String tesseractCommand;
 
-    public TextExtractionService(@Value("${app.ocr.tesseract-command}") String tesseractCommand) {
+    public TextExtractionService(@Value("${app.ocr.tesseract-command:tesseract}") String tesseractCommand) {
         this.tesseractCommand = tesseractCommand;
     }
 
@@ -71,9 +72,17 @@ public class TextExtractionService {
     private String extractImageWithOcr(Path path) throws IOException, InterruptedException {
         Path outputBase = Files.createTempFile("smart-exam-ocr", "");
         Files.deleteIfExists(outputBase);
-        Process process = new ProcessBuilder(tesseractCommand, path.toString(), outputBase.toString(), "-l", "chi_sim+eng")
-                .redirectErrorStream(true)
-                .start();
+        String command = resolveTesseractCommand();
+        Process process;
+        try {
+            process = new ProcessBuilder(command, path.toString(), outputBase.toString(), "-l", "chi_sim+eng")
+                    .redirectErrorStream(true)
+                    .start();
+        } catch (IOException ex) {
+            throw new IOException("Cannot run Tesseract command \"" + command
+                    + "\". If you installed it recently, restart the backend so it gets the updated PATH, "
+                    + "or set app.ocr.tesseract-command/TESSERACT_CMD to the full tesseract.exe path.", ex);
+        }
         int code = process.waitFor();
         String logs = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         Path textFile = Path.of(outputBase + ".txt");
@@ -83,5 +92,57 @@ public class TextExtractionService {
             return text;
         }
         return "OCR did not finish. Make sure Tesseract and the chi_sim language pack are installed. Output:\n" + logs;
+    }
+
+    private String resolveTesseractCommand() throws IOException {
+        String configured = normalizeCommand(tesseractCommand);
+        if (!configured.isBlank() && !isDefaultCommand(configured)) {
+            return configured;
+        }
+
+        String envCommand = normalizeCommand(System.getenv("TESSERACT_CMD"));
+        if (!envCommand.isBlank()) {
+            return envCommand;
+        }
+
+        for (String candidate : windowsTesseractCandidates()) {
+            if (Files.isRegularFile(Path.of(candidate))) {
+                return candidate;
+            }
+        }
+
+        return configured.isBlank() ? "tesseract" : configured;
+    }
+
+    private String normalizeCommand(String command) {
+        if (command == null) {
+            return "";
+        }
+        String trimmed = command.trim();
+        if (trimmed.length() >= 2 && trimmed.startsWith("\"") && trimmed.endsWith("\"")) {
+            return trimmed.substring(1, trimmed.length() - 1);
+        }
+        return trimmed;
+    }
+
+    private boolean isDefaultCommand(String command) {
+        return "tesseract".equalsIgnoreCase(command) || "tesseract.exe".equalsIgnoreCase(command);
+    }
+
+    private List<String> windowsTesseractCandidates() {
+        List<String> candidates = new ArrayList<>();
+        addProgramFilesCandidate(candidates, "ProgramFiles");
+        addProgramFilesCandidate(candidates, "ProgramFiles(x86)");
+        addProgramFilesCandidate(candidates, "LOCALAPPDATA");
+        return candidates;
+    }
+
+    private void addProgramFilesCandidate(List<String> candidates, String envName) {
+        String base = System.getenv(envName);
+        if (base == null || base.isBlank()) {
+            return;
+        }
+        candidates.add(Path.of(base, "Tesseract-OCR", "tesseract.exe").toString());
+        candidates.add(Path.of(base, "Programs", "Tesseract-OCR", "tesseract.exe").toString());
     }
 }

@@ -7,10 +7,11 @@ import java.time.Instant;
 public class FolderDtos {
     public record CreateFolderRequest(
             @NotBlank @Size(max = 120) String name,
-            @Size(max = 400) String description
+            @Size(max = 400) String description,
+            Long parentId
     ) {
     }
 
-    public record FolderResponse(Long id, String name, String description, Instant createdAt) {
+    public record FolderResponse(Long id, String name, String description, Long parentId, int depth, Instant createdAt) {
     }
 }

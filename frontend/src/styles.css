@@ -194,6 +194,12 @@ textarea:focus {
   padding: 0 10px;
 }
 
+.secondary-btn.active {
+  border-color: #a8d8d2;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
 .primary-btn:hover,
 .icon-btn.solid:hover {
   background: var(--primary-dark);
@@ -340,7 +346,7 @@ textarea:focus {
   grid-template-columns: 22px minmax(0, 1fr);
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 8px 10px 8px calc(10px + var(--folder-indent, 0px));
 }
 
 .folder-item span,
@@ -428,6 +434,14 @@ textarea:focus {
   display: grid;
   grid-template-columns: minmax(180px, 0.9fr) minmax(240px, 1.1fr) auto;
   gap: 8px;
+}
+
+.folder-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  color: var(--muted);
 }
 
 .folder-board {
