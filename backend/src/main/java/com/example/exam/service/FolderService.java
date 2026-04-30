@@ -11,12 +11,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class FolderService {
+    private static final int MAX_FOLDER_DEPTH = 2;
+
     private final StudyFolderRepository folderRepository;
 
     public FolderService(StudyFolderRepository folderRepository) {
         this.folderRepository = folderRepository;
     }
 
+    @Transactional(readOnly = true)
     public List<FolderResponse> list(User user) {
         return folderRepository.findByOwnerIdOrderByCreatedAtDesc(user.getId()).stream()
                 .map(this::toResponse)
@@ -29,6 +32,16 @@ public class FolderService {
         folder.setOwner(user);
         folder.setName(request.name());
         folder.setDescription(request.description());
+
+        if (request.parentId() != null) {
+            StudyFolder parent = requireOwned(request.parentId(), user.getId());
+            if (parent.getDepth() >= MAX_FOLDER_DEPTH) {
+                throw new IllegalArgumentException("Folders support at most 2 levels");
+            }
+            folder.setParent(parent);
+            folder.setDepth(parent.getDepth() + 1);
+        }
+
         folderRepository.save(folder);
         return toResponse(folder);
     }
@@ -39,6 +52,8 @@ public class FolderService {
     }
 
     private FolderResponse toResponse(StudyFolder folder) {
-        return new FolderResponse(folder.getId(), folder.getName(), folder.getDescription(), folder.getCreatedAt());
+        Long parentId = folder.getParent() == null ? null : folder.getParent().getId();
+        return new FolderResponse(folder.getId(), folder.getName(), folder.getDescription(), parentId,
+                folder.getDepth(), folder.getCreatedAt());
     }
 }

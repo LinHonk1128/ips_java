@@ -61,17 +61,22 @@
             <span>当前文件夹</span>
             <button class="icon-btn mini" title="刷新文件夹" @click="loadFolders"><RefreshCw :size="15" /></button>
           </div>
+          <button class="folder-item" :class="{ selected: !activeFolder }" @click="selectRoot">
+            <FolderOpen :size="18" />
+            <span>我的资料</span>
+          </button>
           <button
-            v-for="folder in folders"
+            v-for="folder in folderTree"
             :key="folder.id"
             class="folder-item"
             :class="{ selected: activeFolder?.id === folder.id }"
+            :style="{ '--folder-indent': `${(folder.depth - 1) * 18}px` }"
             @click="selectFolder(folder)"
           >
             <Folder :size="18" />
             <span>{{ folder.name }}</span>
           </button>
-          <div v-if="folders.length === 0" class="empty-note">还没有文件夹，请先到“文件夹与文件”页面创建。</div>
+          <div v-if="folders.length === 0" class="empty-note">还没有文件夹，请先到“我的资料”页面创建。</div>
         </div>
       </aside>
 
@@ -83,7 +88,7 @@
           </div>
           <div class="folder-chip" :class="{ muted: !activeFolder }">
             <FolderOpen :size="18" />
-            <span>{{ activeFolder?.name || '未选择文件夹' }}</span>
+            <span>{{ currentFolderName }}</span>
           </div>
         </header>
 
@@ -93,21 +98,33 @@
           <div class="section-head">
             <div>
               <h3>创建文件夹</h3>
-              <p>按科目、章节或资料来源建立分类，再进入文件夹查看已有文件。</p>
+              <p>{{ createFolderHint }}</p>
             </div>
           </div>
           <form class="folder-form wide" @submit.prevent="createFolder">
-            <input v-model="folderForm.name" placeholder="新建科目文件夹" required />
-            <input v-model="folderForm.description" placeholder="描述，可选" />
-            <button class="primary-btn compact" type="submit" :disabled="loading">
+            <input v-model="folderForm.name" :placeholder="folderNamePlaceholder" :disabled="!canCreateFolder" required />
+            <input v-model="folderForm.description" placeholder="描述，可选" :disabled="!canCreateFolder" />
+            <button class="primary-btn compact" type="submit" :disabled="loading || !canCreateFolder">
               <FolderPlus :size="17" />
               创建
             </button>
           </form>
 
+          <div class="folder-breadcrumb" aria-label="文件夹路径">
+            <button class="secondary-btn slim" type="button" :class="{ active: !activeFolder }" @click="selectRoot">
+              我的资料
+            </button>
+            <template v-for="folder in folderPath" :key="folder.id">
+              <ChevronRight :size="16" />
+              <button class="secondary-btn slim" type="button" @click="selectFolder(folder)">
+                {{ folder.name }}
+              </button>
+            </template>
+          </div>
+
           <div class="folder-board">
             <button
-              v-for="folder in folders"
+              v-for="folder in visibleFolders"
               :key="folder.id"
               class="folder-card"
               :class="{ selected: activeFolder?.id === folder.id }"
@@ -117,10 +134,10 @@
               <strong>{{ folder.name }}</strong>
               <span>{{ folder.description || '暂无描述' }}</span>
             </button>
-            <div v-if="folders.length === 0" class="empty-state">
+            <div v-if="visibleFolders.length === 0" class="empty-state">
               <FolderPlus :size="30" />
-              <strong>先创建一个资料文件夹</strong>
-              <span>文件夹会作为上传、编辑和知识问答的工作范围。</span>
+              <strong>{{ emptyFolderTitle }}</strong>
+              <span>{{ emptyFolderDescription }}</span>
             </div>
           </div>
 
@@ -336,6 +353,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import {
   Bot,
+  ChevronRight,
   FileText,
   Folder,
   FolderOpen,
@@ -379,9 +397,10 @@ const defaultAiSettings = {
 const chatForm = reactive({ mode: 'QA', question: '' })
 const aiSettings = reactive(loadAiSettings())
 const settingsSaved = ref(false)
+const maxFolderDepth = 2
 
 const navItems = [
-  { key: 'library', label: '文件夹与文件', icon: Library },
+  { key: 'library', label: '我的资料', icon: Library },
   { key: 'chat', label: '知识问答', icon: MessageSquare },
   { key: 'editor', label: '上传编辑', icon: ScanText },
   { key: 'settings', label: 'AI 设置', icon: Settings }
@@ -389,7 +408,7 @@ const navItems = [
 
 const pageMeta = {
   library: {
-    title: '文件夹与文件',
+    title: '我的资料',
     description: '创建资料文件夹，查看当前文件夹中的文件，保持知识库结构清晰。'
   },
   chat: {
@@ -408,6 +427,53 @@ const pageMeta = {
 
 const pageTitle = computed(() => pageMeta[activePage.value].title)
 const pageDescription = computed(() => pageMeta[activePage.value].description)
+const visibleFolders = computed(() => {
+  const parentId = activeFolder.value?.id ?? null
+  return folders.value.filter((folder) => (folder.parentId ?? null) === parentId)
+})
+const folderTree = computed(() => {
+  const byParent = new Map()
+  folders.value.forEach((folder) => {
+    const parentId = folder.parentId ?? null
+    const siblings = byParent.get(parentId) || []
+    siblings.push(folder)
+    byParent.set(parentId, siblings)
+  })
+
+  const ordered = []
+  const appendChildren = (parentId) => {
+    ;(byParent.get(parentId) || []).forEach((folder) => {
+      ordered.push(folder)
+      appendChildren(folder.id)
+    })
+  }
+  appendChildren(null)
+  return ordered
+})
+const folderPath = computed(() => {
+  if (!activeFolder.value) return []
+  const byId = new Map(folders.value.map((folder) => [folder.id, folder]))
+  const path = []
+  let current = activeFolder.value
+  while (current) {
+    path.unshift(current)
+    current = current.parentId ? byId.get(current.parentId) : null
+  }
+  return path
+})
+const currentFolderName = computed(() => folderPath.value.map((folder) => folder.name).join(' / ') || '我的资料')
+const canCreateFolder = computed(() => (activeFolder.value?.depth ?? 0) < maxFolderDepth)
+const folderNamePlaceholder = computed(() => (activeFolder.value ? '新建子文件夹' : '新建资料文件夹'))
+const createFolderHint = computed(() => {
+  if (!canCreateFolder.value) return '当前文件夹已达到 2 层上限，不能继续创建子文件夹。'
+  return activeFolder.value
+    ? `在“${activeFolder.value.name}”中创建子文件夹，最多支持 2 层。`
+    : '按科目、章节或资料来源建立分类，再进入文件夹查看已有文件。'
+})
+const emptyFolderTitle = computed(() => (activeFolder.value ? '当前文件夹没有子文件夹' : '先创建一个资料文件夹'))
+const emptyFolderDescription = computed(() =>
+  activeFolder.value ? '可以继续上传文件，或在未达到 2 层时创建子文件夹。' : '文件夹会作为上传、编辑和知识问答的工作范围。'
+)
 
 onMounted(() => {
   if (session.value) loadFolders()
@@ -426,20 +492,36 @@ async function submitAuth() {
 async function loadFolders() {
   await run(async () => {
     folders.value = await folderApi.list()
-    if (!activeFolder.value && folders.value.length) {
-      await selectFolder(folders.value[0])
+    if (activeFolder.value) {
+      const refreshedFolder = folders.value.find((folder) => folder.id === activeFolder.value.id)
+      if (refreshedFolder) {
+        activeFolder.value = refreshedFolder
+      } else {
+        selectRoot()
+      }
     }
   })
 }
 
 async function createFolder() {
+  if (!canCreateFolder.value) return
   await run(async () => {
-    const folder = await folderApi.create({ ...folderForm })
+    const folder = await folderApi.create({
+      ...folderForm,
+      parentId: activeFolder.value?.id ?? null
+    })
     folderForm.name = ''
     folderForm.description = ''
     folders.value.unshift(folder)
     await selectFolder(folder)
   })
+}
+
+function selectRoot() {
+  activeFolder.value = null
+  activeFile.value = null
+  files.value = []
+  messages.value = []
 }
 
 async function selectFolder(folder) {
