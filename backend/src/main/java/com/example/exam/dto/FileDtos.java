@@ -1,0 +1,22 @@
+package com.example.exam.dto;
+
+import com.example.exam.model.FileTag;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import java.time.Instant;
+
+public class FileDtos {
+    public record FileResponse(
+            Long id,
+            Long folderId,
+            String originalName,
+            FileTag tag,
+            String contentType,
+            String extractedText,
+            Instant uploadedAt
+    ) {
+    }
+
+    public record UpdateFileTextRequest(@NotBlank String extractedText, @NotNull FileTag tag) {
+    }
+}

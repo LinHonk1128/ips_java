@@ -1,0 +1,55 @@
+package com.example.exam.model;
+
+import jakarta.persistence.*;
+import java.time.Instant;
+
+@Entity
+public class StudyFolder {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    private User owner;
+
+    @Column(nullable = false, length = 120)
+    private String name;
+
+    @Column(length = 400)
+    private String description;
+
+    @Column(nullable = false)
+    private Instant createdAt = Instant.now();
+
+    public Long getId() {
+        return id;
+    }
+
+    public User getOwner() {
+        return owner;
+    }
+
+    public void setOwner(User owner) {
+        this.owner = owner;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+}

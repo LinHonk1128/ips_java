@@ -1,0 +1,9 @@
+.codex/
+.m2/
+.npm-cache/
+backend/target/
+frontend/node_modules/
+frontend/dist/
+data/
+uploads/
+*.log
