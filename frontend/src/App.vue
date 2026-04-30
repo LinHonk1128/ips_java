@@ -156,15 +156,14 @@
               <button :class="{ active: chatForm.mode === 'QA' }" @click="chatForm.mode = 'QA'">答疑模式</button>
               <button :class="{ active: chatForm.mode === 'TEACHER' }" @click="chatForm.mode = 'TEACHER'">教师模式</button>
             </div>
-            <div class="model-box">
-              <select v-model="chatForm.model" title="模型">
-                <option value="gpt-4o-mini">gpt-4o-mini</option>
-                <option value="gpt-4o">gpt-4o</option>
-                <option value="qwen-plus">qwen-plus</option>
-                <option value="deepseek-chat">deepseek-chat</option>
-              </select>
-              <input v-model="chatForm.endpoint" placeholder="OpenAI 兼容接口地址" />
-              <input v-model="chatForm.apiKey" type="password" placeholder="自己的 API Key" />
+            <div class="ai-summary">
+              <Bot :size="18" />
+              <span>{{ aiSettings.aiRole }}</span>
+              <b>{{ aiSettings.model }}</b>
+              <button class="secondary-btn slim" type="button" @click="activePage = 'settings'">
+                <Settings :size="16" />
+                设置
+              </button>
             </div>
           </div>
 
@@ -193,7 +192,7 @@
           </form>
         </section>
 
-        <section v-else class="page-panel editor-page">
+        <section v-else-if="activePage === 'editor'" class="page-panel editor-page">
           <form class="upload-strip" @submit.prevent="uploadFile">
             <select v-model="uploadTag" :disabled="!activeFolder">
               <option value="TEXTBOOK">教材</option>
@@ -250,6 +249,84 @@
             </div>
           </div>
         </section>
+
+        <section v-else class="page-panel settings-page">
+          <div class="settings-layout">
+            <form class="settings-form" @submit.prevent="saveAiSettings">
+              <div class="section-head">
+                <h3>AI 角色与提示词</h3>
+                <p>这些设置会应用到知识问答和教师模式，适合按你的复习习惯调整回答风格。</p>
+              </div>
+
+              <label>
+                角色定位
+                <input v-model="aiSettings.aiRole" maxlength="80" placeholder="例如：严谨的考研专业课答疑老师" />
+              </label>
+
+              <label>
+                提示词
+                <textarea
+                  v-model="aiSettings.systemPrompt"
+                  class="prompt-textarea"
+                  spellcheck="false"
+                  placeholder="例如：优先使用知识库内容回答；指出依据；遇到不确定信息要说明无法从资料中确认。"
+                />
+              </label>
+
+              <div class="section-head">
+                <h3>OpenAI 兼容接口</h3>
+                <p>支持 OpenAI 官方接口，也支持兼容 Chat Completions 的模型服务。</p>
+              </div>
+
+              <div class="settings-grid">
+                <label>
+                  模型
+                  <select v-model="aiSettings.model">
+                    <option value="gpt-4o-mini">gpt-4o-mini</option>
+                    <option value="gpt-4o">gpt-4o</option>
+                    <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+                    <option value="qwen-plus">qwen-plus</option>
+                    <option value="deepseek-chat">deepseek-chat</option>
+                  </select>
+                </label>
+                <label>
+                  Endpoint
+                  <input v-model="aiSettings.endpoint" placeholder="https://api.openai.com/v1/chat/completions" />
+                </label>
+              </div>
+
+              <label>
+                API Key
+                <input v-model="aiSettings.apiKey" type="password" autocomplete="off" placeholder="sk-..." />
+              </label>
+
+              <div class="settings-actions">
+                <button class="primary-btn compact" type="submit">
+                  <Save :size="17" />
+                  保存设置
+                </button>
+                <button class="secondary-btn" type="button" @click="resetAiSettings">
+                  <RotateCcw :size="17" />
+                  恢复默认
+                </button>
+                <span v-if="settingsSaved" class="saved-note">已保存</span>
+              </div>
+            </form>
+
+            <aside class="settings-preview">
+              <div class="preview-icon">
+                <Bot :size="24" />
+              </div>
+              <strong>{{ aiSettings.aiRole || defaultAiSettings.aiRole }}</strong>
+              <span>{{ aiSettings.model || defaultAiSettings.model }}</span>
+              <p>{{ aiSettings.systemPrompt || defaultAiSettings.systemPrompt }}</p>
+              <div class="key-state" :class="{ ready: aiSettings.apiKey }">
+                <KeyRound :size="17" />
+                <span>{{ aiSettings.apiKey ? 'API Key 已配置' : '未配置 API Key，将使用本地检索兜底回答' }}</span>
+              </div>
+            </aside>
+          </div>
+        </section>
       </section>
     </section>
   </main>
@@ -258,18 +335,22 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import {
+  Bot,
   FileText,
   Folder,
   FolderOpen,
   FolderPlus,
+  KeyRound,
   Library,
   LogIn,
   LogOut,
   MessageSquare,
   RefreshCw,
+  RotateCcw,
   Save,
   ScanText,
   Send,
+  Settings,
   Upload
 } from 'lucide-vue-next'
 import { authApi, chatApi, clearSession, fileApi, folderApi, getSession, setSession } from './api/client'
@@ -288,18 +369,22 @@ const fileInput = ref(null)
 const loading = ref(false)
 const error = ref('')
 const messages = ref([])
-const chatForm = reactive({
-  mode: 'QA',
-  question: '',
+const defaultAiSettings = {
+  aiRole: '严谨的考研答疑老师',
+  systemPrompt: '优先依据当前知识库回答；给出可追溯依据；如果资料不足，明确说明无法从知识库确认。',
   model: 'gpt-4o-mini',
   apiKey: '',
-  endpoint: ''
-})
+  endpoint: 'https://api.openai.com/v1/chat/completions'
+}
+const chatForm = reactive({ mode: 'QA', question: '' })
+const aiSettings = reactive(loadAiSettings())
+const settingsSaved = ref(false)
 
 const navItems = [
   { key: 'library', label: '文件夹与文件', icon: Library },
   { key: 'chat', label: '知识问答', icon: MessageSquare },
-  { key: 'editor', label: '上传编辑', icon: ScanText }
+  { key: 'editor', label: '上传编辑', icon: ScanText },
+  { key: 'settings', label: 'AI 设置', icon: Settings }
 ]
 
 const pageMeta = {
@@ -314,6 +399,10 @@ const pageMeta = {
   editor: {
     title: '上传编辑',
     description: '上传文件、校正扫描文本，并保存为后续问答可检索的知识片段。'
+  },
+  settings: {
+    title: 'AI 设置',
+    description: '配置答疑模式中的角色定位、提示词、模型服务和 API Key。'
   }
 }
 
@@ -393,9 +482,31 @@ async function ask() {
   messages.value.push({ role: 'user', content: question })
   chatForm.question = ''
   await run(async () => {
-    const response = await chatApi.ask({ ...chatForm, question, folderId: activeFolder.value.id })
+    const response = await chatApi.ask({ ...aiSettings, ...chatForm, question, folderId: activeFolder.value.id })
     messages.value.push({ role: 'assistant', content: response.answer, sources: response.sources })
   })
+}
+
+function loadAiSettings() {
+  try {
+    const raw = localStorage.getItem('smart_exam_ai_settings')
+    return raw ? { ...defaultAiSettings, ...JSON.parse(raw) } : { ...defaultAiSettings }
+  } catch {
+    return { ...defaultAiSettings }
+  }
+}
+
+function saveAiSettings() {
+  localStorage.setItem('smart_exam_ai_settings', JSON.stringify({ ...aiSettings }))
+  settingsSaved.value = true
+  window.setTimeout(() => {
+    settingsSaved.value = false
+  }, 1800)
+}
+
+function resetAiSettings() {
+  Object.assign(aiSettings, defaultAiSettings)
+  saveAiSettings()
 }
 
 function logout() {
