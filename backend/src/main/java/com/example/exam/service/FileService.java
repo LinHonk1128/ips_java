@@ -44,6 +44,13 @@ public class FileService {
         return fileRepository.findByFolderIdOrderByUploadedAtDesc(folderId).stream().map(this::toResponse).toList();
     }
 
+    @Transactional(readOnly = true)
+    public FileResponse get(Long fileId, Long userId) {
+        StudyFile file = fileRepository.findByIdAndFolderOwnerId(fileId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("File not found or access denied"));
+        return toResponse(file);
+    }
+
     @Transactional
     public FileResponse upload(Long folderId, Long userId, FileTag tag, MultipartFile multipartFile) throws IOException {
         StudyFolder folder = folderService.requireOwned(folderId, userId);
@@ -75,10 +82,19 @@ public class FileService {
         return toResponse(file);
     }
 
+    @Transactional
+    public void delete(Long fileId, Long userId) throws IOException {
+        StudyFile file = fileRepository.findByIdAndFolderOwnerId(fileId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("File not found or access denied"));
+        chunkRepository.deleteByFileId(file.getId());
+        fileRepository.delete(file);
+        Files.deleteIfExists(Path.of(file.getStoredPath()));
+    }
+
     private void rebuildKnowledge(StudyFile file) {
         chunkRepository.deleteByFileId(file.getId());
         String text = file.getExtractedText() == null ? "" : file.getExtractedText().trim();
-        if (text.isBlank()) {
+        if (text.isBlank() || textExtractionService.isExtractionPlaceholder(text)) {
             return;
         }
         int chunkSize = 900;

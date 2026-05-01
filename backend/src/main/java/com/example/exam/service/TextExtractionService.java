@@ -43,10 +43,26 @@ public class TextExtractionService {
             if (contentType != null && contentType.startsWith("image/")) {
                 return extractImageWithOcr(path);
             }
-            return "This file type is not supported for automatic extraction yet. Paste or edit text here, then save it to the knowledge base.";
+            return "当前文件类型暂不支持自动抽取。请在这里粘贴或编辑正文，然后保存为知识库。";
         } catch (Exception ex) {
-            return "Automatic extraction failed: " + ex.getMessage() + "\nEdit the text manually, then save it to the knowledge base.";
+            return "自动抽取失败：" + ex.getMessage() + "\n请手动编辑正文后，再保存为知识库。";
         }
+    }
+
+    public boolean isExtractionPlaceholder(String text) {
+        if (text == null || text.isBlank()) {
+            return true;
+        }
+        String lower = text.toLowerCase(Locale.ROOT);
+        return lower.contains("automatic extraction failed:")
+                || lower.contains("cannot run tesseract")
+                || lower.contains("ocr did not finish")
+                || lower.contains("this file type is not supported for automatic extraction yet")
+                || text.contains("自动抽取失败：")
+                || text.contains("OCR 没有完成")
+                || text.contains("当前文件类型暂不支持自动抽取")
+                || text.contains("请手动编辑正文后，再保存为知识库")
+                || text.contains("请在这里粘贴或编辑正文，然后保存为知识库");
     }
 
     private String extractPdf(Path path) throws IOException {
@@ -91,7 +107,7 @@ public class TextExtractionService {
             Files.deleteIfExists(textFile);
             return text;
         }
-        return "OCR did not finish. Make sure Tesseract and the chi_sim language pack are installed. Output:\n" + logs;
+        return "OCR 没有完成。请确认已安装 Tesseract 和 chi_sim 中文语言包。\n输出信息：\n" + logs;
     }
 
     private String resolveTesseractCommand() throws IOException {

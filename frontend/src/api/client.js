@@ -47,13 +47,15 @@ export const folderApi = {
 
 export const fileApi = {
   list: (folderId) => api(`/folders/${folderId}/files`),
+  get: (fileId) => api(`/files/${fileId}`),
   upload: (folderId, tag, file) => {
     const form = new FormData()
     form.append('tag', tag)
     form.append('file', file)
     return api(`/folders/${folderId}/files`, { method: 'POST', body: form })
   },
-  update: (fileId, payload) => api(`/files/${fileId}`, { method: 'PUT', body: JSON.stringify(payload) })
+  update: (fileId, payload) => api(`/files/${fileId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  delete: (fileId) => api(`/files/${fileId}`, { method: 'DELETE' })
 }
 
 export const chatApi = {

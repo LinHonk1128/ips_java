@@ -152,17 +152,24 @@
             </button>
           </div>
           <div class="file-list roomy">
-            <button
+            <div
               v-for="file in files"
               :key="file.id"
               class="file-row"
               :class="{ selected: activeFile?.id === file.id }"
+              role="button"
+              tabindex="0"
               @click="selectFile(file)"
+              @keydown.enter="selectFile(file)"
+              @keydown.space.prevent="selectFile(file)"
             >
               <FileText :size="18" />
               <span>{{ file.originalName }}</span>
               <b>{{ tagLabel(file.tag) }}</b>
-            </button>
+              <button class="icon-btn mini danger" type="button" title="删除文件" @click.stop="deleteFile(file)">
+                <Trash2 :size="15" />
+              </button>
+            </div>
             <div v-if="activeFolder && files.length === 0" class="empty-note">当前文件夹还没有文件。</div>
           </div>
         </section>
@@ -170,8 +177,8 @@
         <section v-else-if="activePage === 'chat'" class="page-panel chat-page">
           <div class="qa-toolbar">
             <div class="mode-tabs">
-              <button :class="{ active: chatForm.mode === 'QA' }" @click="chatForm.mode = 'QA'">答疑模式</button>
-              <button :class="{ active: chatForm.mode === 'TEACHER' }" @click="chatForm.mode = 'TEACHER'">教师模式</button>
+              <button :class="{ active: chatForm.mode === 'QA' }" @click="setChatMode('QA')">答疑模式</button>
+              <button :class="{ active: chatForm.mode === 'TEACHER' }" @click="setChatMode('TEACHER')">教师模式</button>
             </div>
             <div class="ai-summary">
               <Bot :size="18" />
@@ -188,11 +195,32 @@
             <article v-for="(message, index) in messages" :key="index" :class="['message', message.role]">
               <p>{{ message.content }}</p>
               <div v-if="message.sources?.length" class="sources">
-                <span v-for="source in message.sources" :key="source.fileId + source.excerpt">
-                  {{ source.fileName }}：{{ source.excerpt }}
-                </span>
+                <button
+                  v-for="source in message.sources"
+                  :key="source.fileId + source.excerpt"
+                  class="source-link"
+                  type="button"
+                  @click="showSource(source)"
+                >
+                  <FileText :size="14" />
+                  <span>{{ source.fileName }}</span>
+                </button>
               </div>
             </article>
+            <div
+              v-if="activeSource"
+              class="source-popover"
+              role="dialog"
+              aria-label="依据来源"
+              @dblclick="openSourceFile(activeSource)"
+            >
+              <div class="source-popover-head">
+                <strong>{{ activeSource.fileName }}</strong>
+                <button class="icon-btn mini" type="button" title="关闭" @click="activeSource = null">×</button>
+              </div>
+              <p>{{ activeSource.excerpt }}</p>
+              <span>双击窗口可打开完整文件，并定位到这段依据。</span>
+            </div>
             <div v-if="messages.length === 0" class="empty-chat">
               <MessageSquare :size="30" />
               <strong>{{ activeFolder ? '开始围绕当前知识库提问' : '先选择一个文件夹' }}</strong>
@@ -227,17 +255,24 @@
 
           <div class="editor-layout">
             <div class="file-list editor-list">
-              <button
+              <div
                 v-for="file in files"
                 :key="file.id"
                 class="file-row"
                 :class="{ selected: activeFile?.id === file.id }"
+                role="button"
+                tabindex="0"
                 @click="selectFile(file)"
+                @keydown.enter="selectFile(file)"
+                @keydown.space.prevent="selectFile(file)"
               >
                 <FileText :size="18" />
                 <span>{{ file.originalName }}</span>
                 <b>{{ tagLabel(file.tag) }}</b>
-              </button>
+                <button class="icon-btn mini danger" type="button" title="删除文件" @click.stop="deleteFile(file)">
+                  <Trash2 :size="15" />
+                </button>
+              </div>
               <div v-if="activeFolder && files.length === 0" class="empty-note">上传 PDF、图片、Word 或文本文件后，可在右侧校正文档文本。</div>
               <div v-if="!activeFolder" class="empty-note">请先选择一个文件夹。</div>
             </div>
@@ -253,7 +288,7 @@
                   <option value="OTHER">其他</option>
                 </select>
               </div>
-              <textarea v-model="activeFile.extractedText" spellcheck="false" />
+              <textarea ref="editorTextarea" v-model="activeFile.extractedText" spellcheck="false" />
               <button class="primary-btn compact" @click="saveFileText" :disabled="loading">
                 <Save :size="17" />
                 保存为知识库
@@ -350,7 +385,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import {
   Bot,
   ChevronRight,
@@ -369,6 +404,7 @@ import {
   ScanText,
   Send,
   Settings,
+  Trash2,
   Upload
 } from 'lucide-vue-next'
 import { authApi, chatApi, clearSession, fileApi, folderApi, getSession, setSession } from './api/client'
@@ -384,9 +420,11 @@ const activeFile = ref(null)
 const activePage = ref('library')
 const uploadTag = ref('NOTE')
 const fileInput = ref(null)
+const editorTextarea = ref(null)
 const loading = ref(false)
 const error = ref('')
-const messages = ref([])
+const chatMessages = reactive({ QA: [], TEACHER: [] })
+const activeSource = ref(null)
 const defaultAiSettings = {
   aiRole: '严谨的考研答疑老师',
   systemPrompt: '优先依据当前知识库回答；给出可追溯依据；如果资料不足，明确说明无法从知识库确认。',
@@ -427,6 +465,7 @@ const pageMeta = {
 
 const pageTitle = computed(() => pageMeta[activePage.value].title)
 const pageDescription = computed(() => pageMeta[activePage.value].description)
+const messages = computed(() => chatMessages[chatForm.mode])
 const visibleFolders = computed(() => {
   const parentId = activeFolder.value?.id ?? null
   return folders.value.filter((folder) => (folder.parentId ?? null) === parentId)
@@ -521,18 +560,25 @@ function selectRoot() {
   activeFolder.value = null
   activeFile.value = null
   files.value = []
-  messages.value = []
+  clearChatMessages()
+  activeSource.value = null
 }
 
 async function selectFolder(folder) {
   activeFolder.value = folder
   activeFile.value = null
   files.value = await fileApi.list(folder.id)
-  messages.value = []
+  clearChatMessages()
+  activeSource.value = null
 }
 
 function selectFile(file) {
   activeFile.value = { ...file }
+}
+
+function setChatMode(mode) {
+  chatForm.mode = mode
+  activeSource.value = null
 }
 
 async function uploadFile() {
@@ -558,15 +604,104 @@ async function saveFileText() {
   })
 }
 
+async function deleteFile(file) {
+  if (!file || !window.confirm(`确定删除“${file.originalName}”吗？`)) return
+  await run(async () => {
+    await fileApi.delete(file.id)
+    files.value = files.value.filter((item) => item.id !== file.id)
+    if (activeFile.value?.id === file.id) {
+      activeFile.value = null
+    }
+    clearChatMessages()
+    if (activeSource.value?.fileId === file.id) {
+      activeSource.value = null
+    }
+  })
+}
+
 async function ask() {
   const question = chatForm.question.trim()
   if (!question || !activeFolder.value) return
   messages.value.push({ role: 'user', content: question })
   chatForm.question = ''
+  activeSource.value = null
   await run(async () => {
     const response = await chatApi.ask({ ...aiSettings, ...chatForm, question, folderId: activeFolder.value.id })
     messages.value.push({ role: 'assistant', content: response.answer, sources: response.sources })
   })
+}
+
+function showSource(source) {
+  activeSource.value = activeSource.value === source ? null : source
+}
+
+async function openSourceFile(source) {
+  if (!source) return
+  await run(async () => {
+    const file = await fileApi.get(source.fileId)
+    const folder = folders.value.find((item) => item.id === file.folderId)
+    if (folder) {
+      activeFolder.value = folder
+      files.value = await fileApi.list(folder.id)
+    }
+    activeFile.value = { ...file }
+    activePage.value = 'editor'
+    activeSource.value = null
+    await nextTick()
+    focusExcerpt(source.excerpt)
+  })
+}
+
+function focusExcerpt(excerpt) {
+  const textarea = editorTextarea.value
+  if (!textarea || !activeFile.value?.extractedText || !excerpt) return
+  const text = activeFile.value.extractedText
+  const match = findExcerptRange(text, excerpt)
+  if (!match) {
+    textarea.focus()
+    return
+  }
+  textarea.focus()
+  textarea.setSelectionRange(match.start, match.end)
+  textarea.scrollTop = Math.max(0, textarea.scrollTop - 24)
+}
+
+function findExcerptRange(text, excerpt) {
+  const needle = excerpt.replace(/\.\.\.$/, '').replace(/\s+/g, ' ').trim()
+  if (!needle) return null
+  const exactIndex = text.indexOf(needle)
+  if (exactIndex >= 0) {
+    return { start: exactIndex, end: exactIndex + needle.length }
+  }
+
+  let normalized = ''
+  const indexMap = []
+  let lastWasSpace = false
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]
+    if (/\s/.test(character)) {
+      if (!lastWasSpace && normalized.length > 0) {
+        normalized += ' '
+        indexMap.push(index)
+        lastWasSpace = true
+      }
+    } else {
+      normalized += character
+      indexMap.push(index)
+      lastWasSpace = false
+    }
+  }
+
+  const normalizedIndex = normalized.indexOf(needle)
+  if (normalizedIndex < 0) return null
+  const start = indexMap[normalizedIndex]
+  const end = indexMap[Math.min(normalizedIndex + needle.length - 1, indexMap.length - 1)] + 1
+  return { start, end }
+}
+
+function clearChatMessages() {
+  chatMessages.QA.splice(0)
+  chatMessages.TEACHER.splice(0)
 }
 
 function loadAiSettings() {
@@ -598,7 +733,8 @@ function logout() {
   files.value = []
   activeFolder.value = null
   activeFile.value = null
-  messages.value = []
+  activeSource.value = null
+  clearChatMessages()
 }
 
 async function run(task) {

@@ -9,6 +9,8 @@ import com.example.exam.service.FileService;
 import jakarta.validation.Valid;
 import java.io.IOException;
 import java.util.List;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -36,6 +38,12 @@ public class FileController {
         return fileService.list(folderId, user.getId());
     }
 
+    @GetMapping("/files/{fileId}")
+    public FileResponse get(@PathVariable Long fileId) {
+        User user = currentUserService.user();
+        return fileService.get(fileId, user.getId());
+    }
+
     @PostMapping("/folders/{folderId}/files")
     public FileResponse upload(@PathVariable Long folderId,
                                @RequestParam(defaultValue = "OTHER") FileTag tag,
@@ -48,5 +56,12 @@ public class FileController {
     public FileResponse updateText(@PathVariable Long fileId, @Valid @RequestBody UpdateFileTextRequest request) {
         User user = currentUserService.user();
         return fileService.updateText(fileId, user.getId(), request);
+    }
+
+    @DeleteMapping("/files/{fileId}")
+    public ResponseEntity<Void> delete(@PathVariable Long fileId) throws IOException {
+        User user = currentUserService.user();
+        fileService.delete(fileId, user.getId());
+        return ResponseEntity.noContent().build();
     }
 }

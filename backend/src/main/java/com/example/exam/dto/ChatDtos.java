@@ -18,7 +18,7 @@ public class ChatDtos {
     ) {
     }
 
-    public record Source(Long fileId, String fileName, String excerpt) {
+    public record Source(Long fileId, Long folderId, String fileName, String excerpt) {
     }
 
     public record ChatResponse(String answer, List<Source> sources) {

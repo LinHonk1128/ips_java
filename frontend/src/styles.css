@@ -235,6 +235,15 @@ textarea:focus {
   min-height: 32px;
 }
 
+.icon-btn.danger {
+  color: var(--danger);
+}
+
+.icon-btn.danger:hover {
+  border-color: rgba(180, 35, 24, 0.28);
+  background: #fff1ee;
+}
+
 .error-text,
 .error-banner {
   margin: 0;
@@ -495,7 +504,7 @@ textarea:focus {
 .file-row {
   min-height: 42px;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
+  grid-template-columns: 22px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
   padding: 9px 10px;
@@ -635,6 +644,7 @@ textarea:focus {
 }
 
 .chat-log {
+  position: relative;
   overflow: auto;
   display: flex;
   flex-direction: column;
@@ -668,17 +678,78 @@ textarea:focus {
 }
 
 .sources {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 10px;
-  color: var(--muted);
   font-size: 12px;
 }
 
-.sources span {
-  padding-top: 6px;
-  border-top: 1px solid var(--line);
-  line-height: 1.6;
+.source-link {
+  max-width: 100%;
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+.source-link:hover,
+.source-link:focus-visible {
+  border-color: #a8d8d2;
+  background: var(--primary-soft);
+}
+
+.source-link span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-popover {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  width: min(620px, calc(100% - 8px));
+  align-self: flex-start;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #a8d8d2;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.source-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.source-popover-head strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-popover p {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.7;
+}
+
+.source-popover > span {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .question-box {
