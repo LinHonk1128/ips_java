@@ -359,7 +359,7 @@ textarea:focus {
 }
 
 .folder-item span,
-.file-row span {
+.file-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -460,6 +460,7 @@ textarea:focus {
 }
 
 .folder-card {
+  position: relative;
   min-height: 132px;
   display: grid;
   align-content: start;
@@ -468,6 +469,7 @@ textarea:focus {
   border-color: var(--line);
   border-radius: 8px;
   background: var(--panel);
+  cursor: pointer;
 }
 
 .folder-card strong {
@@ -491,6 +493,59 @@ textarea:focus {
   transform: translateY(-1px);
 }
 
+.folder-delete-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: var(--surface);
+}
+
+.folder-edit-btn {
+  position: absolute;
+  top: 10px;
+  right: 48px;
+  background: var(--surface);
+}
+
+.folder-edit-panel {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) minmax(180px, 0.8fr) minmax(220px, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.folder-edit-panel strong {
+  white-space: nowrap;
+}
+
+.file-move-panel {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: minmax(160px, auto) minmax(220px, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-color: var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.file-move-panel strong {
+  min-width: 0;
+}
+
+.file-move-panel select {
+  min-width: 0;
+}
+
+.file-move-panel.compact-panel {
+  margin-top: 8px;
+}
+
 .file-list {
   display: grid;
   gap: 8px;
@@ -502,20 +557,70 @@ textarea:focus {
 }
 
 .file-row {
-  min-height: 42px;
+  min-height: 54px;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 10px;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
   padding: 9px 10px;
   border-color: var(--line);
   border-radius: 6px;
+}
+
+.file-main {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.file-name {
+  min-width: 0;
+  font-weight: 700;
+}
+
+.file-meta,
+.file-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-meta {
+  flex-wrap: wrap;
+}
+
+.file-actions {
+  justify-content: flex-end;
 }
 
 .file-row b {
   color: var(--amber);
   font-size: 12px;
   font-weight: 700;
+}
+
+.knowledge-badge {
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid #a8d8d2;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.knowledge-badge.off {
+  border-color: var(--line);
+  background: #f2ecdf;
+  color: var(--muted);
+}
+
+.knowledge-action {
+  min-width: 52px;
 }
 
 .qa-toolbar {
@@ -660,10 +765,30 @@ textarea:focus {
   background: var(--panel);
 }
 
-.message p {
+.message-content {
   margin: 0;
   white-space: pre-wrap;
   line-height: 1.75;
+}
+
+.citation-link {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  margin: 0 2px;
+  padding: 1px 6px;
+  border: 1px solid #a8d8d2;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 800;
+  vertical-align: baseline;
+}
+
+.citation-link:hover,
+.citation-link:focus-visible {
+  background: var(--primary-soft);
 }
 
 .message.user {
@@ -675,6 +800,24 @@ textarea:focus {
 
 .message.assistant {
   align-self: flex-start;
+}
+
+.pending-message {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+}
+
+.spin-icon,
+.pending-message svg {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .sources {
@@ -771,10 +914,16 @@ textarea:focus {
   gap: 8px;
 }
 
+.editor-page {
+  min-height: calc(100vh - 128px);
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: stretch;
+}
+
 .editor-layout {
-  min-height: 520px;
+  min-height: 0;
   display: grid;
-  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -784,9 +933,9 @@ textarea:focus {
 }
 
 .editor-panel {
-  min-height: 520px;
+  min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(360px, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 10px;
 }
 
@@ -801,10 +950,86 @@ textarea:focus {
   width: 110px;
 }
 
-.editor-panel textarea {
-  min-height: 360px;
-  resize: vertical;
+.rich-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px;
+  border-color: var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.color-tool {
+  width: 40px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+}
+
+.color-tool:hover {
+  border-color: #b8aa95;
+  background: #f2ecdf;
+}
+
+.color-tool input {
+  width: 18px;
+  min-height: 18px;
+  height: 18px;
+  margin-left: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.rich-editor {
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
   line-height: 1.7;
+  outline: none;
+}
+
+.rich-editor:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(13, 132, 121, 0.14);
+}
+
+.rich-editor p {
+  margin: 0 0 10px;
+}
+
+.rich-editor table {
+  width: 100%;
+  margin: 10px 0 14px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.rich-editor td,
+.rich-editor th {
+  min-width: 72px;
+  padding: 8px 10px;
+  border: 1px solid #cfd8d3;
+  vertical-align: top;
+}
+
+.rich-editor ul,
+.rich-editor ol {
+  margin: 8px 0 12px 24px;
 }
 
 .empty-note,
@@ -914,6 +1139,9 @@ textarea:focus {
 
   .page-nav,
   .folder-form.wide,
+  .folder-edit-panel,
+  .file-row,
+  .file-move-panel,
   .settings-grid,
   .upload-strip,
   .question-box {
@@ -927,6 +1155,15 @@ textarea:focus {
   .ai-summary b,
   .ai-summary .secondary-btn {
     grid-column: 1 / -1;
+  }
+
+  .file-row {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .file-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 
   .primary-btn.compact,

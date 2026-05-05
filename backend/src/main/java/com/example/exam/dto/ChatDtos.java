@@ -14,11 +14,18 @@ public class ChatDtos {
             String apiKey,
             String endpoint,
             String aiRole,
-            String systemPrompt
+            String systemPrompt,
+            String chatModel,
+            String chatEndpoint,
+            String chatApiKey,
+            String embeddingModel,
+            String embeddingEndpoint,
+            String embeddingApiKey,
+            Integer embeddingDimensions
     ) {
     }
 
-    public record Source(Long fileId, Long folderId, String fileName, String excerpt) {
+    public record Source(Integer citationIndex, Long fileId, Long folderId, String fileName, String excerpt) {
     }
 
     public record ChatResponse(String answer, List<Source> sources) {

@@ -1,6 +1,8 @@
 package com.example.exam.controller;
 
 import com.example.exam.dto.FileDtos.FileResponse;
+import com.example.exam.dto.FileDtos.MoveFileRequest;
+import com.example.exam.dto.FileDtos.UpdateKnowledgeStatusRequest;
 import com.example.exam.dto.FileDtos.UpdateFileTextRequest;
 import com.example.exam.model.FileTag;
 import com.example.exam.model.User;
@@ -12,6 +14,7 @@ import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -56,6 +59,19 @@ public class FileController {
     public FileResponse updateText(@PathVariable Long fileId, @Valid @RequestBody UpdateFileTextRequest request) {
         User user = currentUserService.user();
         return fileService.updateText(fileId, user.getId(), request);
+    }
+
+    @PatchMapping("/files/{fileId}/knowledge")
+    public FileResponse updateKnowledgeStatus(@PathVariable Long fileId,
+                                              @Valid @RequestBody UpdateKnowledgeStatusRequest request) {
+        User user = currentUserService.user();
+        return fileService.updateKnowledgeStatus(fileId, user.getId(), request);
+    }
+
+    @PatchMapping("/files/{fileId}/move")
+    public FileResponse move(@PathVariable Long fileId, @Valid @RequestBody MoveFileRequest request) {
+        User user = currentUserService.user();
+        return fileService.move(fileId, user.getId(), request);
     }
 
     @DeleteMapping("/files/{fileId}")

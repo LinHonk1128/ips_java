@@ -95,11 +95,15 @@
         <p v-if="error" class="error-banner">{{ error }}</p>
 
         <section v-if="activePage === 'library'" class="page-panel library-page">
-          <div class="section-head">
+          <div class="section-head split">
             <div>
               <h3>创建文件夹</h3>
               <p>{{ createFolderHint }}</p>
             </div>
+            <button class="secondary-btn" type="button" :disabled="!activeFolder" @click="useCurrentFolderAsKnowledgeBase">
+              <MessageSquare :size="17" />
+              以当前文件夹为知识库
+            </button>
           </div>
           <form class="folder-form wide" @submit.prevent="createFolder">
             <input v-model="folderForm.name" :placeholder="folderNamePlaceholder" :disabled="!canCreateFolder" required />
@@ -123,23 +127,44 @@
           </div>
 
           <div class="folder-board">
-            <button
+            <div
               v-for="folder in visibleFolders"
               :key="folder.id"
               class="folder-card"
               :class="{ selected: activeFolder?.id === folder.id }"
+              role="button"
+              tabindex="0"
               @click="selectFolder(folder)"
+              @keydown.enter="selectFolder(folder)"
+              @keydown.space.prevent="selectFolder(folder)"
             >
               <Folder :size="22" />
               <strong>{{ folder.name }}</strong>
               <span>{{ folder.description || '暂无描述' }}</span>
-            </button>
+              <button class="icon-btn mini folder-edit-btn" type="button" title="修改文件夹" @click.stop="openEditFolder(folder)">
+                <Pencil :size="15" />
+              </button>
+              <button class="icon-btn mini danger folder-delete-btn" type="button" title="删除文件夹" @click.stop="deleteFolder(folder)">
+                <Trash2 :size="15" />
+              </button>
+            </div>
             <div v-if="visibleFolders.length === 0" class="empty-state">
               <FolderPlus :size="30" />
               <strong>{{ emptyFolderTitle }}</strong>
               <span>{{ emptyFolderDescription }}</span>
             </div>
           </div>
+
+          <form v-if="editingFolder" class="folder-edit-panel" @submit.prevent="saveFolderEdit">
+            <strong>修改文件夹</strong>
+            <input v-model="editFolderForm.name" required maxlength="120" />
+            <input v-model="editFolderForm.description" maxlength="400" placeholder="描述，可选" />
+            <button class="primary-btn compact" type="submit" :disabled="loading">
+              <Save :size="16" />
+              保存
+            </button>
+            <button class="secondary-btn slim" type="button" @click="cancelEditFolder">取消</button>
+          </form>
 
           <div class="section-head split">
             <div>
@@ -164,14 +189,47 @@
               @keydown.space.prevent="selectFile(file)"
             >
               <FileText :size="18" />
-              <span>{{ file.originalName }}</span>
-              <b>{{ tagLabel(file.tag) }}</b>
-              <button class="icon-btn mini danger" type="button" title="删除文件" @click.stop="deleteFile(file)">
-                <Trash2 :size="15" />
-              </button>
+              <div class="file-main">
+                <span class="file-name">{{ file.originalName }}</span>
+                <div class="file-meta">
+                  <b>{{ tagLabel(file.tag) }}</b>
+                  <em class="knowledge-badge" :class="{ off: !file.knowledgeEnabled }">
+                    {{ file.knowledgeEnabled ? '已加入知识库' : '未加入知识库' }}
+                  </em>
+                </div>
+              </div>
+              <div class="file-actions">
+                <button
+                  class="secondary-btn slim knowledge-action"
+                  type="button"
+                  @click.stop="toggleKnowledge(file)"
+                >
+                  {{ file.knowledgeEnabled ? '移出' : '加入' }}
+                </button>
+                <button class="icon-btn mini" type="button" title="移动文件" @click.stop="openMoveFile(file)">
+                  <MoveRight :size="15" />
+                </button>
+                <button class="icon-btn mini danger" type="button" title="删除文件" @click.stop="deleteFile(file)">
+                  <Trash2 :size="15" />
+                </button>
+              </div>
             </div>
             <div v-if="activeFolder && files.length === 0" class="empty-note">当前文件夹还没有文件。</div>
           </div>
+
+          <form v-if="movingFile" class="file-move-panel" @submit.prevent="moveFile">
+            <strong>移动“{{ movingFile.originalName }}”到</strong>
+            <select v-model="moveFileTargetId">
+              <option v-for="target in fileMoveTargetOptions" :key="target.id" :value="String(target.id)">
+                {{ folderOptionLabel(target) }}
+              </option>
+            </select>
+            <button class="primary-btn compact" type="submit" :disabled="loading || !canSubmitFileMove">
+              <MoveRight :size="16" />
+              移动
+            </button>
+            <button class="secondary-btn slim" type="button" @click="cancelMoveFile">取消</button>
+          </form>
         </section>
 
         <section v-else-if="activePage === 'chat'" class="page-panel chat-page">
@@ -183,7 +241,7 @@
             <div class="ai-summary">
               <Bot :size="18" />
               <span>{{ aiSettings.aiRole }}</span>
-              <b>{{ aiSettings.model }}</b>
+              <b>{{ aiSettings.chatModel }}</b>
               <button class="secondary-btn slim" type="button" @click="activePage = 'settings'">
                 <Settings :size="16" />
                 设置
@@ -193,19 +251,24 @@
 
           <div class="chat-log">
             <article v-for="(message, index) in messages" :key="index" :class="['message', message.role]">
-              <p>{{ message.content }}</p>
-              <div v-if="message.sources?.length" class="sources">
-                <button
-                  v-for="source in message.sources"
-                  :key="source.fileId + source.excerpt"
-                  class="source-link"
-                  type="button"
-                  @click="showSource(source)"
-                >
-                  <FileText :size="14" />
-                  <span>{{ source.fileName }}</span>
-                </button>
+              <div class="message-content">
+                <template v-for="(part, partIndex) in messageParts(message)" :key="partIndex">
+                  <button
+                    v-if="part.type === 'citation'"
+                    class="citation-link"
+                    type="button"
+                    :title="sourceLabel(part.source)"
+                    @click="showSource(part.source)"
+                  >
+                    {{ part.text }}
+                  </button>
+                  <span v-else>{{ part.text }}</span>
+                </template>
               </div>
+            </article>
+            <article v-if="chatLoading" class="message assistant pending-message" aria-live="polite">
+              <LoaderCircle :size="18" />
+              <span>正在检索知识库并生成回答…</span>
             </article>
             <div
               v-if="activeSource"
@@ -215,7 +278,7 @@
               @dblclick="openSourceFile(activeSource)"
             >
               <div class="source-popover-head">
-                <strong>{{ activeSource.fileName }}</strong>
+                <strong>{{ sourceLabel(activeSource) }}</strong>
                 <button class="icon-btn mini" type="button" title="关闭" @click="activeSource = null">×</button>
               </div>
               <p>{{ activeSource.excerpt }}</p>
@@ -229,10 +292,11 @@
           </div>
 
           <form class="question-box" @submit.prevent="ask">
-            <textarea v-model="chatForm.question" :disabled="!activeFolder" placeholder="输入问题，或在教师模式下输入：开始抽问本章重点" />
+            <textarea v-model="chatForm.question" :disabled="!activeFolder || chatLoading" placeholder="输入问题，或在教师模式下输入：开始抽问本章重点" />
             <button class="primary-btn" type="submit" :disabled="!activeFolder || !chatForm.question || loading">
-              <Send :size="18" />
-              发送
+              <LoaderCircle v-if="chatLoading" :size="18" class="spin-icon" />
+              <Send v-else :size="18" />
+              {{ chatLoading ? '生成中' : '发送' }}
             </button>
           </form>
         </section>
@@ -267,12 +331,44 @@
                 @keydown.space.prevent="selectFile(file)"
               >
                 <FileText :size="18" />
-                <span>{{ file.originalName }}</span>
-                <b>{{ tagLabel(file.tag) }}</b>
-                <button class="icon-btn mini danger" type="button" title="删除文件" @click.stop="deleteFile(file)">
-                  <Trash2 :size="15" />
-                </button>
+                <div class="file-main">
+                  <span class="file-name">{{ file.originalName }}</span>
+                  <div class="file-meta">
+                    <b>{{ tagLabel(file.tag) }}</b>
+                    <em class="knowledge-badge" :class="{ off: !file.knowledgeEnabled }">
+                      {{ file.knowledgeEnabled ? '已加入知识库' : '未加入知识库' }}
+                    </em>
+                  </div>
+                </div>
+                <div class="file-actions">
+                  <button
+                    class="secondary-btn slim knowledge-action"
+                    type="button"
+                    @click.stop="toggleKnowledge(file)"
+                  >
+                    {{ file.knowledgeEnabled ? '移出' : '加入' }}
+                  </button>
+                  <button class="icon-btn mini" type="button" title="移动文件" @click.stop="openMoveFile(file)">
+                    <MoveRight :size="15" />
+                  </button>
+                  <button class="icon-btn mini danger" type="button" title="删除文件" @click.stop="deleteFile(file)">
+                    <Trash2 :size="15" />
+                  </button>
+                </div>
               </div>
+              <form v-if="movingFile" class="file-move-panel compact-panel" @submit.prevent="moveFile">
+                <strong>移动“{{ movingFile.originalName }}”到</strong>
+                <select v-model="moveFileTargetId">
+                  <option v-for="target in fileMoveTargetOptions" :key="target.id" :value="String(target.id)">
+                    {{ folderOptionLabel(target) }}
+                  </option>
+                </select>
+                <button class="primary-btn compact" type="submit" :disabled="loading || !canSubmitFileMove">
+                  <MoveRight :size="16" />
+                  移动
+                </button>
+                <button class="secondary-btn slim" type="button" @click="cancelMoveFile">取消</button>
+              </form>
               <div v-if="activeFolder && files.length === 0" class="empty-note">上传 PDF、图片、Word 或文本文件后，可在右侧校正文档文本。</div>
               <div v-if="!activeFolder" class="empty-note">请先选择一个文件夹。</div>
             </div>
@@ -288,10 +384,48 @@
                   <option value="OTHER">其他</option>
                 </select>
               </div>
-              <textarea ref="editorTextarea" v-model="activeFile.extractedText" spellcheck="false" />
+              <div class="rich-toolbar" aria-label="文档编辑工具栏">
+                <button class="icon-btn mini" type="button" title="加粗" @click="formatEditor('bold')">
+                  <Bold :size="15" />
+                </button>
+                <button class="icon-btn mini" type="button" title="斜体" @click="formatEditor('italic')">
+                  <Italic :size="15" />
+                </button>
+                <button class="icon-btn mini" type="button" title="下划线" @click="formatEditor('underline')">
+                  <Underline :size="15" />
+                </button>
+                <label class="color-tool" title="文字颜色">
+                  <Palette :size="15" />
+                  <input v-model="editorTextColor" type="color" @input="setEditorTextColor(editorTextColor)" />
+                </label>
+                <button class="icon-btn mini" type="button" title="项目符号" @click="formatEditor('insertUnorderedList')">
+                  <List :size="15" />
+                </button>
+                <button class="icon-btn mini" type="button" title="编号列表" @click="formatEditor('insertOrderedList')">
+                  <ListOrdered :size="15" />
+                </button>
+                <button class="icon-btn mini" type="button" title="插入表格" @click="insertTable">
+                  <Table2 :size="15" />
+                </button>
+              </div>
+              <div
+                ref="editorElement"
+                class="rich-editor"
+                contenteditable="true"
+                spellcheck="false"
+                @input="syncEditorContent"
+              ></div>
               <button class="primary-btn compact" @click="saveFileText" :disabled="loading">
                 <Save :size="17" />
                 保存为知识库
+              </button>
+              <button
+                class="secondary-btn compact"
+                type="button"
+                @click="toggleKnowledge(activeFile)"
+                :disabled="loading"
+              >
+                {{ activeFile.knowledgeEnabled ? '移出知识库' : '加入知识库' }}
               </button>
             </div>
             <div v-else class="empty-editor">
@@ -326,14 +460,14 @@
               </label>
 
               <div class="section-head">
-                <h3>OpenAI 兼容接口</h3>
+                <h3>答题模型接口</h3>
                 <p>支持 OpenAI 官方接口，也支持兼容 Chat Completions 的模型服务。</p>
               </div>
 
               <div class="settings-grid">
                 <label>
                   模型
-                  <select v-model="aiSettings.model">
+                  <select v-model="aiSettings.chatModel">
                     <option value="gpt-4o-mini">gpt-4o-mini</option>
                     <option value="gpt-4o">gpt-4o</option>
                     <option value="gpt-4.1-mini">gpt-4.1-mini</option>
@@ -343,14 +477,46 @@
                 </label>
                 <label>
                   Endpoint
-                  <input v-model="aiSettings.endpoint" placeholder="https://api.openai.com/v1/chat/completions" />
+                  <input v-model="aiSettings.chatEndpoint" placeholder="https://api.openai.com/v1/chat/completions" />
                 </label>
               </div>
 
               <label>
-                API Key
-                <input v-model="aiSettings.apiKey" type="password" autocomplete="off" placeholder="sk-..." />
+                答题 API Key
+                <input v-model="aiSettings.chatApiKey" type="password" autocomplete="off" placeholder="sk-..." />
               </label>
+
+              <div class="section-head">
+                <h3>Embedding 检索模型</h3>
+                <p>用于 Elasticsearch 语义向量检索；保存资料时会用这里的配置生成向量索引。</p>
+              </div>
+
+              <div class="settings-grid">
+                <label>
+                  Embedding 模型
+                  <select v-model="aiSettings.embeddingModel">
+                    <option value="text-embedding-3-small">text-embedding-3-small</option>
+                    <option value="text-embedding-3-large">text-embedding-3-large</option>
+                    <option value="text-embedding-v3">text-embedding-v3</option>
+                    <option value="bge-m3">bge-m3</option>
+                  </select>
+                </label>
+                <label>
+                  Embedding Endpoint
+                  <input v-model="aiSettings.embeddingEndpoint" placeholder="https://api.openai.com/v1/embeddings" />
+                </label>
+              </div>
+
+              <div class="settings-grid">
+                <label>
+                  Embedding API Key
+                  <input v-model="aiSettings.embeddingApiKey" type="password" autocomplete="off" placeholder="sk-..." />
+                </label>
+                <label>
+                  向量维度
+                  <input v-model.number="aiSettings.embeddingDimensions" type="number" min="1" max="4096" />
+                </label>
+              </div>
 
               <div class="settings-actions">
                 <button class="primary-btn compact" type="submit">
@@ -370,11 +536,15 @@
                 <Bot :size="24" />
               </div>
               <strong>{{ aiSettings.aiRole || defaultAiSettings.aiRole }}</strong>
-              <span>{{ aiSettings.model || defaultAiSettings.model }}</span>
+              <span>{{ aiSettings.chatModel || defaultAiSettings.chatModel }}</span>
               <p>{{ aiSettings.systemPrompt || defaultAiSettings.systemPrompt }}</p>
-              <div class="key-state" :class="{ ready: aiSettings.apiKey }">
+              <div class="key-state" :class="{ ready: aiSettings.chatApiKey }">
                 <KeyRound :size="17" />
-                <span>{{ aiSettings.apiKey ? 'API Key 已配置' : '未配置 API Key，将使用本地检索兜底回答' }}</span>
+                <span>{{ aiSettings.chatApiKey ? '答题 API Key 已配置' : '未配置答题 API Key，将使用本地检索兜底回答' }}</span>
+              </div>
+              <div class="key-state" :class="{ ready: aiSettings.embeddingApiKey }">
+                <KeyRound :size="17" />
+                <span>{{ aiSettings.embeddingApiKey ? `Embedding 已配置：${aiSettings.embeddingModel}` : '未配置 Embedding，将只使用关键词检索' }}</span>
               </div>
             </aside>
           </div>
@@ -387,6 +557,7 @@
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import {
+  Bold,
   Bot,
   ChevronRight,
   FileText,
@@ -395,24 +566,34 @@ import {
   FolderPlus,
   KeyRound,
   Library,
+  LoaderCircle,
   LogIn,
   LogOut,
+  Italic,
+  List,
+  ListOrdered,
   MessageSquare,
+  MoveRight,
+  Palette,
+  Pencil,
   RefreshCw,
   RotateCcw,
   Save,
   ScanText,
   Send,
   Settings,
+  Table2,
   Trash2,
+  Underline,
   Upload
 } from 'lucide-vue-next'
-import { authApi, chatApi, clearSession, fileApi, folderApi, getSession, setSession } from './api/client'
+import { aiSettingsApi, authApi, chatApi, clearSession, fileApi, folderApi, getSession, setSession } from './api/client'
 
 const session = ref(getSession())
 const authMode = ref('login')
 const authForm = reactive({ username: '', password: '', displayName: '' })
 const folderForm = reactive({ name: '', description: '' })
+const editFolderForm = reactive({ name: '', description: '' })
 const folders = ref([])
 const files = ref([])
 const activeFolder = ref(null)
@@ -420,22 +601,31 @@ const activeFile = ref(null)
 const activePage = ref('library')
 const uploadTag = ref('NOTE')
 const fileInput = ref(null)
-const editorTextarea = ref(null)
+const editorElement = ref(null)
+const editorTextColor = ref('#24231f')
 const loading = ref(false)
+const chatLoading = ref(false)
 const error = ref('')
 const chatMessages = reactive({ QA: [], TEACHER: [] })
 const activeSource = ref(null)
+const movingFile = ref(null)
+const editingFolder = ref(null)
+const moveFileTargetId = ref('')
 const defaultAiSettings = {
   aiRole: '严谨的考研答疑老师',
   systemPrompt: '优先依据当前知识库回答；给出可追溯依据；如果资料不足，明确说明无法从知识库确认。',
-  model: 'gpt-4o-mini',
-  apiKey: '',
-  endpoint: 'https://api.openai.com/v1/chat/completions'
+  chatModel: 'gpt-4o-mini',
+  chatApiKey: '',
+  chatEndpoint: 'https://api.openai.com/v1/chat/completions',
+  embeddingModel: 'text-embedding-3-small',
+  embeddingApiKey: '',
+  embeddingEndpoint: 'https://api.openai.com/v1/embeddings',
+  embeddingDimensions: 1536
 }
 const chatForm = reactive({ mode: 'QA', question: '' })
 const aiSettings = reactive(loadAiSettings())
 const settingsSaved = ref(false)
-const maxFolderDepth = 2
+const maxFolderDepth = 3
 
 const navItems = [
   { key: 'library', label: '我的资料', icon: Library },
@@ -500,13 +690,18 @@ const folderPath = computed(() => {
   }
   return path
 })
+const fileMoveTargetOptions = computed(() => folderTree.value)
+const canSubmitFileMove = computed(() => {
+  if (!movingFile.value || !moveFileTargetId.value) return false
+  return movingFile.value.folderId !== Number(moveFileTargetId.value)
+})
 const currentFolderName = computed(() => folderPath.value.map((folder) => folder.name).join(' / ') || '我的资料')
 const canCreateFolder = computed(() => (activeFolder.value?.depth ?? 0) < maxFolderDepth)
 const folderNamePlaceholder = computed(() => (activeFolder.value ? '新建子文件夹' : '新建资料文件夹'))
 const createFolderHint = computed(() => {
-  if (!canCreateFolder.value) return '当前文件夹已达到 2 层上限，不能继续创建子文件夹。'
+  if (!canCreateFolder.value) return '当前文件夹已达到 3 层上限，不能继续创建子文件夹。'
   return activeFolder.value
-    ? `在“${activeFolder.value.name}”中创建子文件夹，最多支持 2 层。`
+    ? `在“${activeFolder.value.name}”中创建子文件夹，最多支持 3 层。`
     : '按科目、章节或资料来源建立分类，再进入文件夹查看已有文件。'
 })
 const emptyFolderTitle = computed(() => (activeFolder.value ? '当前文件夹没有子文件夹' : '先创建一个资料文件夹'))
@@ -515,7 +710,10 @@ const emptyFolderDescription = computed(() =>
 )
 
 onMounted(() => {
-  if (session.value) loadFolders()
+  if (session.value) {
+    loadFolders()
+    loadRemoteAiSettings()
+  }
 })
 
 async function submitAuth() {
@@ -525,6 +723,7 @@ async function submitAuth() {
     setSession(result)
     session.value = result
     await loadFolders()
+    await loadRemoteAiSettings()
   })
 }
 
@@ -559,26 +758,189 @@ async function createFolder() {
 function selectRoot() {
   activeFolder.value = null
   activeFile.value = null
+  clearEditorContent()
   files.value = []
   clearChatMessages()
+  activeSource.value = null
+  cancelMoveFile()
+  cancelEditFolder()
+}
+
+function openEditFolder(folder) {
+  editingFolder.value = folder
+  editFolderForm.name = folder.name
+  editFolderForm.description = folder.description || ''
+}
+
+function cancelEditFolder() {
+  editingFolder.value = null
+  editFolderForm.name = ''
+  editFolderForm.description = ''
+}
+
+async function saveFolderEdit() {
+  if (!editingFolder.value) return
+  const folderId = editingFolder.value.id
+  await run(async () => {
+    const updated = await folderApi.update(folderId, {
+      name: editFolderForm.name.trim(),
+      description: editFolderForm.description
+    })
+    folders.value = folders.value.map((folder) => (folder.id === updated.id ? updated : folder))
+    if (activeFolder.value?.id === updated.id) {
+      activeFolder.value = updated
+    }
+    cancelEditFolder()
+  })
+}
+
+async function deleteFolder(folder) {
+  if (!folder || !window.confirm(`确定删除“${folder.name}”及其中的子文件夹、文件和知识库片段吗？`)) return
+  const deletedIds = collectFolderIds(folder.id)
+  const parentId = folder.parentId ?? null
+  await run(async () => {
+    await folderApi.delete(folder.id)
+    folders.value = folders.value.filter((item) => !deletedIds.has(item.id))
+    if (activeFolder.value && deletedIds.has(activeFolder.value.id)) {
+      const parent = parentId ? folders.value.find((item) => item.id === parentId) : null
+      if (parent) {
+        await selectFolder(parent)
+      } else {
+        selectRoot()
+      }
+    }
+    if (editingFolder.value && deletedIds.has(editingFolder.value.id)) {
+      cancelEditFolder()
+    }
+  })
+}
+
+function collectFolderIds(folderId) {
+  const ids = new Set([folderId])
+  let changed
+  do {
+    changed = false
+    folders.value.forEach((folder) => {
+      if (folder.parentId && ids.has(folder.parentId) && !ids.has(folder.id)) {
+        ids.add(folder.id)
+        changed = true
+      }
+    })
+  } while (changed)
+  return ids
+}
+
+function folderOptionLabel(folder) {
+  return `${'　'.repeat(Math.max(0, folder.depth - 1))}${folder.name}`
+}
+
+function openMoveFile(file) {
+  movingFile.value = file
+  moveFileTargetId.value = file.folderId ? String(file.folderId) : ''
+}
+
+function cancelMoveFile() {
+  movingFile.value = null
+  moveFileTargetId.value = ''
+}
+
+async function moveFile() {
+  if (!movingFile.value || !canSubmitFileMove.value) return
+  const fileId = movingFile.value.id
+  const targetFolderId = Number(moveFileTargetId.value)
+  await run(async () => {
+    const moved = await fileApi.move(fileId, { folderId: targetFolderId })
+    files.value = files.value.filter((file) => file.id !== moved.id)
+    if (activeFile.value?.id === moved.id) {
+      activeFile.value = null
+      clearEditorContent()
+    }
+    clearChatMessages()
+    cancelMoveFile()
+  })
+}
+
+function useCurrentFolderAsKnowledgeBase() {
+  if (!activeFolder.value) return
+  activePage.value = 'chat'
   activeSource.value = null
 }
 
 async function selectFolder(folder) {
   activeFolder.value = folder
   activeFile.value = null
+  clearEditorContent()
   files.value = await fileApi.list(folder.id)
   clearChatMessages()
   activeSource.value = null
+  cancelMoveFile()
+  cancelEditFolder()
 }
 
 function selectFile(file) {
   activeFile.value = { ...file }
+  nextTick(() => setEditorContent(activeFile.value.extractedText))
 }
 
 function setChatMode(mode) {
   chatForm.mode = mode
   activeSource.value = null
+}
+
+function setEditorContent(content = '') {
+  if (!editorElement.value) return
+  editorElement.value.innerHTML = isHtmlContent(content) ? content : plainTextToEditorHtml(content)
+}
+
+function clearEditorContent() {
+  if (editorElement.value) {
+    editorElement.value.innerHTML = ''
+  }
+}
+
+function syncEditorContent() {
+  if (activeFile.value && editorElement.value) {
+    activeFile.value.extractedText = editorElement.value.innerHTML
+  }
+}
+
+function formatEditor(command) {
+  editorElement.value?.focus()
+  document.execCommand(command, false, null)
+  syncEditorContent()
+}
+
+function setEditorTextColor(color) {
+  editorElement.value?.focus()
+  document.execCommand('foreColor', false, color)
+  syncEditorContent()
+}
+
+function insertTable() {
+  editorElement.value?.focus()
+  document.execCommand('insertHTML', false, '<table><tbody><tr><td>单元格</td><td>单元格</td></tr><tr><td>单元格</td><td>单元格</td></tr></tbody></table><p><br></p>')
+  syncEditorContent()
+}
+
+function isHtmlContent(content = '') {
+  return /<\/?[a-z][\s\S]*>/i.test(content)
+}
+
+function plainTextToEditorHtml(text = '') {
+  return text
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => `<p>${escapeHtml(block).replace(/\n/g, '<br>')}</p>`)
+    .join('')
+}
+
+function escapeHtml(text = '') {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
 
 async function uploadFile() {
@@ -589,11 +951,14 @@ async function uploadFile() {
     files.value.unshift(uploaded)
     activeFile.value = { ...uploaded }
     fileInput.value.value = ''
+    await nextTick()
+    setEditorContent(activeFile.value.extractedText)
   })
 }
 
 async function saveFileText() {
   if (!activeFile.value) return
+  syncEditorContent()
   await run(async () => {
     const saved = await fileApi.update(activeFile.value.id, {
       extractedText: activeFile.value.extractedText,
@@ -601,6 +966,35 @@ async function saveFileText() {
     })
     files.value = files.value.map((file) => (file.id === saved.id ? saved : file))
     activeFile.value = { ...saved }
+    await nextTick()
+    setEditorContent(activeFile.value.extractedText)
+  })
+}
+
+async function toggleKnowledge(file) {
+  if (!file) return
+  if (activeFile.value?.id === file.id) {
+    syncEditorContent()
+  }
+  await run(async () => {
+    const saved = !file.knowledgeEnabled && activeFile.value?.id === file.id
+      ? await fileApi.update(activeFile.value.id, {
+          extractedText: activeFile.value.extractedText,
+          tag: activeFile.value.tag
+        })
+      : await fileApi.updateKnowledgeStatus(file.id, {
+          knowledgeEnabled: !file.knowledgeEnabled
+        })
+    files.value = files.value.map((item) => (item.id === saved.id ? saved : item))
+    if (activeFile.value?.id === saved.id) {
+      activeFile.value = { ...saved }
+      await nextTick()
+      setEditorContent(activeFile.value.extractedText)
+    }
+    clearChatMessages()
+    if (!saved.knowledgeEnabled && activeSource.value?.fileId === saved.id) {
+      activeSource.value = null
+    }
   })
 }
 
@@ -611,6 +1005,7 @@ async function deleteFile(file) {
     files.value = files.value.filter((item) => item.id !== file.id)
     if (activeFile.value?.id === file.id) {
       activeFile.value = null
+      clearEditorContent()
     }
     clearChatMessages()
     if (activeSource.value?.fileId === file.id) {
@@ -621,18 +1016,52 @@ async function deleteFile(file) {
 
 async function ask() {
   const question = chatForm.question.trim()
-  if (!question || !activeFolder.value) return
+  if (!question || !activeFolder.value || chatLoading.value) return
   messages.value.push({ role: 'user', content: question })
   chatForm.question = ''
   activeSource.value = null
+  chatLoading.value = true
   await run(async () => {
     const response = await chatApi.ask({ ...aiSettings, ...chatForm, question, folderId: activeFolder.value.id })
     messages.value.push({ role: 'assistant', content: response.answer, sources: response.sources })
   })
+  chatLoading.value = false
 }
 
 function showSource(source) {
   activeSource.value = activeSource.value === source ? null : source
+}
+
+function messageParts(message) {
+  const content = message?.content || ''
+  const sourcesByIndex = new Map((message?.sources || []).map((source, index) => [
+    Number(source.citationIndex || index + 1),
+    source
+  ]))
+  const parts = []
+  const citationPattern = /\[(?:来源|片段)?(\d+)\]/g
+  let cursor = 0
+  let match = citationPattern.exec(content)
+  while (match) {
+    if (match.index > cursor) {
+      parts.push({ type: 'text', text: content.slice(cursor, match.index) })
+    }
+    const citationIndex = Number(match[1])
+    const source = sourcesByIndex.get(citationIndex)
+    parts.push(source
+      ? { type: 'citation', text: `[${citationIndex}]`, source }
+      : { type: 'text', text: match[0] })
+    cursor = match.index + match[0].length
+    match = citationPattern.exec(content)
+  }
+  if (cursor < content.length) {
+    parts.push({ type: 'text', text: content.slice(cursor) })
+  }
+  return parts.length ? parts : [{ type: 'text', text: content }]
+}
+
+function sourceLabel(source) {
+  return `${source.fileName} · 片段 ${source.citationIndex || 1}`
 }
 
 async function openSourceFile(source) {
@@ -648,26 +1077,62 @@ async function openSourceFile(source) {
     activePage.value = 'editor'
     activeSource.value = null
     await nextTick()
+    setEditorContent(activeFile.value.extractedText)
     focusExcerpt(source.excerpt)
   })
 }
 
 function focusExcerpt(excerpt) {
-  const textarea = editorTextarea.value
-  if (!textarea || !activeFile.value?.extractedText || !excerpt) return
-  const text = activeFile.value.extractedText
+  const editor = editorElement.value
+  if (!editor || !activeFile.value?.extractedText || !excerpt) return
+  const text = editor.textContent || ''
   const match = findExcerptRange(text, excerpt)
   if (!match) {
-    textarea.focus()
+    editor.focus()
     return
   }
-  textarea.focus()
-  textarea.setSelectionRange(match.start, match.end)
-  textarea.scrollTop = Math.max(0, textarea.scrollTop - 24)
+  editor.focus()
+  const range = document.createRange()
+  const selection = window.getSelection()
+  const textNode = firstTextNodeContaining(editor, text.slice(match.start, match.end))
+  if (textNode && selection) {
+    const nodeIndex = textNode.textContent.indexOf(text.slice(match.start, match.end))
+    range.setStart(textNode, Math.max(0, nodeIndex))
+    range.setEnd(textNode, Math.max(0, nodeIndex) + text.slice(match.start, match.end).length)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+}
+
+function firstTextNodeContaining(root, needle) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let node = walker.nextNode()
+  while (node) {
+    if (node.textContent.includes(needle)) {
+      return node
+    }
+    node = walker.nextNode()
+  }
+  return null
 }
 
 function findExcerptRange(text, excerpt) {
-  const needle = excerpt.replace(/\.\.\.$/, '').replace(/\s+/g, ' ').trim()
+  const cleanedExcerpt = excerpt.replace(/^\.\.\./, '').replace(/\.\.\.$/, '').trim()
+  const candidates = [
+    cleanedExcerpt,
+    ...cleanedExcerpt.split(/[。！？；;.!?]/).map((part) => part.trim()).filter((part) => part.length >= 12)
+  ]
+
+  for (const candidate of candidates) {
+    const match = findNormalizedRange(text, candidate)
+    if (match) return match
+  }
+
+  return null
+}
+
+function findNormalizedRange(text, needleText) {
+  const needle = needleText.replace(/\s+/g, ' ').trim()
   if (!needle) return null
   const exactIndex = text.indexOf(needle)
   if (exactIndex >= 0) {
@@ -707,23 +1172,46 @@ function clearChatMessages() {
 function loadAiSettings() {
   try {
     const raw = localStorage.getItem('smart_exam_ai_settings')
-    return raw ? { ...defaultAiSettings, ...JSON.parse(raw) } : { ...defaultAiSettings }
+    return normalizeAiSettings(raw ? { ...defaultAiSettings, ...JSON.parse(raw) } : { ...defaultAiSettings })
   } catch {
     return { ...defaultAiSettings }
   }
 }
 
-function saveAiSettings() {
-  localStorage.setItem('smart_exam_ai_settings', JSON.stringify({ ...aiSettings }))
-  settingsSaved.value = true
-  window.setTimeout(() => {
-    settingsSaved.value = false
-  }, 1800)
+async function loadRemoteAiSettings() {
+  await run(async () => {
+    const remote = await aiSettingsApi.get()
+    Object.assign(aiSettings, normalizeAiSettings({ ...aiSettings, ...remote }))
+    localStorage.setItem('smart_exam_ai_settings', JSON.stringify({ ...aiSettings }))
+  })
+}
+
+async function saveAiSettings() {
+  await run(async () => {
+    const saved = await aiSettingsApi.save(normalizeAiSettings(aiSettings))
+    Object.assign(aiSettings, normalizeAiSettings(saved))
+    localStorage.setItem('smart_exam_ai_settings', JSON.stringify({ ...aiSettings }))
+    settingsSaved.value = true
+    window.setTimeout(() => {
+      settingsSaved.value = false
+    }, 1800)
+  })
 }
 
 function resetAiSettings() {
   Object.assign(aiSettings, defaultAiSettings)
   saveAiSettings()
+}
+
+function normalizeAiSettings(settings) {
+  return {
+    ...defaultAiSettings,
+    ...settings,
+    chatModel: settings.chatModel || settings.model || defaultAiSettings.chatModel,
+    chatEndpoint: settings.chatEndpoint || settings.endpoint || defaultAiSettings.chatEndpoint,
+    chatApiKey: settings.chatApiKey || settings.apiKey || defaultAiSettings.chatApiKey,
+    embeddingDimensions: Number(settings.embeddingDimensions || defaultAiSettings.embeddingDimensions)
+  }
 }
 
 function logout() {

@@ -29,6 +29,9 @@ public class StudyFile {
     @Column(columnDefinition = "TEXT")
     private String extractedText;
 
+    @Column(nullable = false, columnDefinition = "boolean default true")
+    private boolean knowledgeEnabled = true;
+
     @Column(nullable = false)
     private Instant uploadedAt = Instant.now();
 
@@ -82,6 +85,14 @@ public class StudyFile {
 
     public void setExtractedText(String extractedText) {
         this.extractedText = extractedText;
+    }
+
+    public boolean isKnowledgeEnabled() {
+        return knowledgeEnabled;
+    }
+
+    public void setKnowledgeEnabled(boolean knowledgeEnabled) {
+        this.knowledgeEnabled = knowledgeEnabled;
     }
 
     public Instant getUploadedAt() {

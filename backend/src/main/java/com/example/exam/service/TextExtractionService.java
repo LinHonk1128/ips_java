@@ -12,17 +12,37 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.poi.hwpf.HWPFDocument;
 import org.apache.poi.hwpf.extractor.WordExtractor;
-import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
+import org.apache.poi.openxml4j.util.ZipSecureFile;
+import org.apache.poi.xwpf.usermodel.IBodyElement;
+import org.apache.poi.xwpf.usermodel.UnderlinePatterns;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.apache.poi.xwpf.usermodel.XWPFTableCell;
+import org.apache.poi.xwpf.usermodel.XWPFTableRow;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class TextExtractionService {
     private final String tesseractCommand;
+    private final long zipMaxFileCount;
+    private final long zipMaxEntrySize;
+    private final long zipMaxTextSize;
+    private final double zipMinInflateRatio;
 
-    public TextExtractionService(@Value("${app.ocr.tesseract-command:tesseract}") String tesseractCommand) {
+    public TextExtractionService(
+            @Value("${app.ocr.tesseract-command:tesseract}") String tesseractCommand,
+            @Value("${app.text-extraction.zip.max-file-count:20000}") long zipMaxFileCount,
+            @Value("${app.text-extraction.zip.max-entry-size:536870912}") long zipMaxEntrySize,
+            @Value("${app.text-extraction.zip.max-text-size:536870912}") long zipMaxTextSize,
+            @Value("${app.text-extraction.zip.min-inflate-ratio:0.0001}") double zipMinInflateRatio) {
         this.tesseractCommand = tesseractCommand;
+        this.zipMaxFileCount = zipMaxFileCount;
+        this.zipMaxEntrySize = zipMaxEntrySize;
+        this.zipMaxTextSize = zipMaxTextSize;
+        this.zipMinInflateRatio = zipMinInflateRatio;
     }
 
     public String extract(Path path, String originalName, String contentType) {
@@ -38,7 +58,7 @@ public class TextExtractionService {
                 return extractDoc(path);
             }
             if (lower.endsWith(".txt") || lower.endsWith(".md") || lower.endsWith(".csv")) {
-                return Files.readString(path, StandardCharsets.UTF_8);
+                return plainTextToHtml(Files.readString(path, StandardCharsets.UTF_8));
             }
             if (contentType != null && contentType.startsWith("image/")) {
                 return extractImageWithOcr(path);
@@ -72,17 +92,93 @@ public class TextExtractionService {
     }
 
     private String extractDocx(Path path) throws IOException {
-        try (XWPFDocument document = new XWPFDocument(Files.newInputStream(path));
-             XWPFWordExtractor extractor = new XWPFWordExtractor(document)) {
-            return extractor.getText();
+        configureZipSecureFileLimits();
+        try (XWPFDocument document = new XWPFDocument(Files.newInputStream(path))) {
+            StringBuilder html = new StringBuilder();
+            for (IBodyElement element : document.getBodyElements()) {
+                if (element instanceof XWPFParagraph paragraph) {
+                    appendParagraph(html, paragraph);
+                } else if (element instanceof XWPFTable table) {
+                    appendTable(html, table);
+                }
+            }
+            return html.toString();
         }
+    }
+
+    private void configureZipSecureFileLimits() {
+        ZipSecureFile.setMaxFileCount(zipMaxFileCount);
+        ZipSecureFile.setMaxEntrySize(zipMaxEntrySize);
+        ZipSecureFile.setMaxTextSize(zipMaxTextSize);
+        ZipSecureFile.setMinInflateRatio(zipMinInflateRatio);
     }
 
     private String extractDoc(Path path) throws IOException {
         try (HWPFDocument document = new HWPFDocument(Files.newInputStream(path));
              WordExtractor extractor = new WordExtractor(document)) {
-            return extractor.getText();
+            return plainTextToHtml(extractor.getText());
         }
+    }
+
+    private void appendParagraph(StringBuilder html, XWPFParagraph paragraph) {
+        StringBuilder content = new StringBuilder();
+        for (XWPFRun run : paragraph.getRuns()) {
+            String text = run.text();
+            if (text == null || text.isBlank()) {
+                continue;
+            }
+            String escaped = escapeHtml(text);
+            if (run.isBold()) {
+                escaped = "<strong>" + escaped + "</strong>";
+            }
+            if (run.isItalic()) {
+                escaped = "<em>" + escaped + "</em>";
+            }
+            if (run.getUnderline() != null && run.getUnderline() != UnderlinePatterns.NONE) {
+                escaped = "<u>" + escaped + "</u>";
+            }
+            content.append(escaped);
+        }
+        if (!content.isEmpty()) {
+            html.append("<p>").append(content).append("</p>");
+        }
+    }
+
+    private void appendTable(StringBuilder html, XWPFTable table) {
+        html.append("<table><tbody>");
+        for (XWPFTableRow row : table.getRows()) {
+            html.append("<tr>");
+            for (XWPFTableCell cell : row.getTableCells()) {
+                html.append("<td>");
+                String text = cell.getText();
+                if (text != null && !text.isBlank()) {
+                    html.append(escapeHtml(text).replace("\n", "<br>"));
+                }
+                html.append("</td>");
+            }
+            html.append("</tr>");
+        }
+        html.append("</tbody></table>");
+    }
+
+    private String plainTextToHtml(String text) {
+        String[] blocks = text == null ? new String[0] : text.split("\\R{2,}");
+        StringBuilder html = new StringBuilder();
+        for (String block : blocks) {
+            String trimmed = block.trim();
+            if (!trimmed.isBlank()) {
+                html.append("<p>").append(escapeHtml(trimmed).replace("\n", "<br>")).append("</p>");
+            }
+        }
+        return html.toString();
+    }
+
+    private String escapeHtml(String text) {
+        return text == null ? "" : text
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;");
     }
 
     private String extractImageWithOcr(Path path) throws IOException, InterruptedException {

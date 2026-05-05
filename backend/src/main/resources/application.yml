@@ -20,11 +20,21 @@ spring:
     open-in-view: false
   servlet:
     multipart:
-      max-file-size: 50MB
-      max-request-size: 60MB
+      max-file-size: 200MB
+      max-request-size: 220MB
 
 app:
   jwt-secret: "replace-this-secret-in-production-please-change"
   upload-dir: "./uploads"
   ocr:
     tesseract-command: "tesseract"
+  text-extraction:
+    zip:
+      max-file-count: 20000
+      max-entry-size: 536870912
+      max-text-size: 536870912
+      min-inflate-ratio: 0.0001
+  elasticsearch:
+    enabled: true
+    url: "http://localhost:9200"
+    index: "smart_exam_chunks"

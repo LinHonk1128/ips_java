@@ -1,4 +1,12 @@
-const API_BASE = import.meta.env.VITE_API_BASE || '/api'
+function normalizeApiBase(value) {
+  const base = (value || '/api').trim()
+  if (/^https?:\/\//i.test(base)) {
+    return base.replace(/\/+$/, '')
+  }
+  return `/${base.replace(/^\/+|\/+$/g, '')}`
+}
+
+const API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE)
 
 export function getToken() {
   return localStorage.getItem('smart_exam_token')
@@ -42,7 +50,9 @@ export const authApi = {
 
 export const folderApi = {
   list: () => api('/folders'),
-  create: (payload) => api('/folders', { method: 'POST', body: JSON.stringify(payload) })
+  create: (payload) => api('/folders', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (folderId, payload) => api(`/folders/${folderId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  delete: (folderId) => api(`/folders/${folderId}`, { method: 'DELETE' })
 }
 
 export const fileApi = {
@@ -55,9 +65,16 @@ export const fileApi = {
     return api(`/folders/${folderId}/files`, { method: 'POST', body: form })
   },
   update: (fileId, payload) => api(`/files/${fileId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  updateKnowledgeStatus: (fileId, payload) => api(`/files/${fileId}/knowledge`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  move: (fileId, payload) => api(`/files/${fileId}/move`, { method: 'PATCH', body: JSON.stringify(payload) }),
   delete: (fileId) => api(`/files/${fileId}`, { method: 'DELETE' })
 }
 
 export const chatApi = {
   ask: (payload) => api('/chat', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export const aiSettingsApi = {
+  get: () => api('/ai-settings'),
+  save: (payload) => api('/ai-settings', { method: 'PUT', body: JSON.stringify(payload) })
 }

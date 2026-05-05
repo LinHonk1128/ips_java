@@ -13,11 +13,20 @@ public interface KnowledgeChunkRepository extends JpaRepository<KnowledgeChunk, 
     @Query("delete from KnowledgeChunk k where k.file.id = :fileId")
     void deleteByFileId(@Param("fileId") Long fileId);
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from KnowledgeChunk k where k.folder.id in :folderIds")
+    void deleteByFolderIdIn(@Param("folderIds") Collection<Long> folderIds);
+
     @Query("select k from KnowledgeChunk k where k.folder.id = :folderId order by k.id asc")
     List<KnowledgeChunk> findByFolderId(@Param("folderId") Long folderId);
 
     @Query("select k from KnowledgeChunk k where k.folder.id in :folderIds order by k.id asc")
     List<KnowledgeChunk> findByFolderIdIn(@Param("folderIds") Collection<Long> folderIds);
+
+    @Query("select k from KnowledgeChunk k where k.file.id = :fileId order by k.chunkIndex asc")
+    List<KnowledgeChunk> findByFileIdOrderByChunkIndexAsc(@Param("fileId") Long fileId);
+
+    long countByFileId(Long fileId);
 
     @Query("""
             select k from KnowledgeChunk k
@@ -25,6 +34,7 @@ public interface KnowledgeChunkRepository extends JpaRepository<KnowledgeChunk, 
             join f.folder folder
             where k.folder.id in :folderIds
               and folder.owner.id = :ownerId
+              and f.knowledgeEnabled = true
             order by k.id asc
             """)
     List<KnowledgeChunk> findExistingByFolderIdInAndOwnerId(@Param("folderIds") Collection<Long> folderIds,

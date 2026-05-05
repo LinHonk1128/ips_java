@@ -1,6 +1,8 @@
 package com.example.exam.service;
 
 import com.example.exam.dto.FileDtos.FileResponse;
+import com.example.exam.dto.FileDtos.MoveFileRequest;
+import com.example.exam.dto.FileDtos.UpdateKnowledgeStatusRequest;
 import com.example.exam.dto.FileDtos.UpdateFileTextRequest;
 import com.example.exam.model.FileTag;
 import com.example.exam.model.KnowledgeChunk;
@@ -13,6 +15,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,17 +28,23 @@ public class FileService {
     private final KnowledgeChunkRepository chunkRepository;
     private final FolderService folderService;
     private final TextExtractionService textExtractionService;
+    private final AiSettingsService aiSettingsService;
+    private final ElasticsearchService elasticsearchService;
     private final Path uploadDir;
 
     public FileService(StudyFileRepository fileRepository,
                        KnowledgeChunkRepository chunkRepository,
                        FolderService folderService,
                        TextExtractionService textExtractionService,
+                       AiSettingsService aiSettingsService,
+                       ElasticsearchService elasticsearchService,
                        @Value("${app.upload-dir}") String uploadDir) {
         this.fileRepository = fileRepository;
         this.chunkRepository = chunkRepository;
         this.folderService = folderService;
         this.textExtractionService = textExtractionService;
+        this.aiSettingsService = aiSettingsService;
+        this.elasticsearchService = elasticsearchService;
         this.uploadDir = Path.of(uploadDir);
     }
 
@@ -66,9 +76,15 @@ public class FileService {
         file.setStoredPath(target.toString());
         file.setContentType(multipartFile.getContentType() == null ? "application/octet-stream" : multipartFile.getContentType());
         file.setTag(tag == null ? FileTag.OTHER : tag);
-        file.setExtractedText(textExtractionService.extract(target, originalName, file.getContentType()));
+        String extractedText = textExtractionService.extract(target, originalName, file.getContentType());
+        if (textExtractionService.isExtractionPlaceholder(extractedText)) {
+            Files.deleteIfExists(target);
+            throw new IllegalArgumentException(extractedText);
+        }
+        file.setExtractedText(extractedText);
+        file.setKnowledgeEnabled(true);
         fileRepository.save(file);
-        rebuildKnowledge(file);
+        rebuildKnowledge(file, userId);
         return toResponse(file);
     }
 
@@ -78,7 +94,42 @@ public class FileService {
                 .orElseThrow(() -> new IllegalArgumentException("File not found or access denied"));
         file.setExtractedText(request.extractedText());
         file.setTag(request.tag());
-        rebuildKnowledge(file);
+        file.setKnowledgeEnabled(true);
+        rebuildKnowledge(file, userId);
+        return toResponse(file);
+    }
+
+    @Transactional
+    public FileResponse updateKnowledgeStatus(Long fileId, Long userId, UpdateKnowledgeStatusRequest request) {
+        StudyFile file = fileRepository.findByIdAndFolderOwnerId(fileId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("File not found or access denied"));
+        file.setKnowledgeEnabled(request.knowledgeEnabled());
+        if (file.isKnowledgeEnabled()) {
+            rebuildKnowledge(file, userId);
+        } else {
+            chunkRepository.deleteByFileId(file.getId());
+            elasticsearchService.deleteByFileId(userId, file.getId());
+        }
+        return toResponse(file);
+    }
+
+    @Transactional
+    public FileResponse move(Long fileId, Long userId, MoveFileRequest request) {
+        StudyFile file = fileRepository.findByIdAndFolderOwnerId(fileId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("File not found or access denied"));
+        StudyFolder targetFolder = folderService.requireOwned(request.folderId(), userId);
+        if (file.getFolder().getId().equals(targetFolder.getId())) {
+            return toResponse(file);
+        }
+        file.setFolder(targetFolder);
+        List<KnowledgeChunk> chunks = chunkRepository.findByFileIdOrderByChunkIndexAsc(file.getId());
+        for (KnowledgeChunk chunk : chunks) {
+            chunk.setFolder(targetFolder);
+        }
+        elasticsearchService.deleteByFileId(userId, file.getId());
+        if (file.isKnowledgeEnabled() && !chunks.isEmpty()) {
+            elasticsearchService.reindexFile(userId, file, chunks, aiSettingsService.get(userId));
+        }
         return toResponse(file);
     }
 
@@ -86,31 +137,71 @@ public class FileService {
     public void delete(Long fileId, Long userId) throws IOException {
         StudyFile file = fileRepository.findByIdAndFolderOwnerId(fileId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("File not found or access denied"));
+        elasticsearchService.deleteByFileId(userId, file.getId());
         chunkRepository.deleteByFileId(file.getId());
         fileRepository.delete(file);
         Files.deleteIfExists(Path.of(file.getStoredPath()));
     }
 
-    private void rebuildKnowledge(StudyFile file) {
+    private void rebuildKnowledge(StudyFile file, Long userId) {
         chunkRepository.deleteByFileId(file.getId());
-        String text = file.getExtractedText() == null ? "" : file.getExtractedText().trim();
-        if (text.isBlank() || textExtractionService.isExtractionPlaceholder(text)) {
+        if (!file.isKnowledgeEnabled()) {
+            elasticsearchService.deleteByFileId(userId, file.getId());
             return;
         }
-        int chunkSize = 900;
+        String text = toSearchableText(file.getExtractedText()).trim();
+        if (text.isBlank() || textExtractionService.isExtractionPlaceholder(text)) {
+            elasticsearchService.deleteByFileId(userId, file.getId());
+            return;
+        }
+        int chunkSize = 800;
+        int overlap = 120;
         int index = 0;
-        for (int start = 0; start < text.length(); start += chunkSize) {
+        List<KnowledgeChunk> chunks = new java.util.ArrayList<>();
+        for (int start = 0; start < text.length(); start += chunkSize - overlap) {
             KnowledgeChunk chunk = new KnowledgeChunk();
             chunk.setFile(file);
             chunk.setFolder(file.getFolder());
             chunk.setChunkIndex(index++);
             chunk.setContent(text.substring(start, Math.min(start + chunkSize, text.length())));
-            chunkRepository.save(chunk);
+            chunks.add(chunkRepository.save(chunk));
+            if (start + chunkSize >= text.length()) {
+                break;
+            }
         }
+        elasticsearchService.reindexFile(userId, file, chunks, aiSettingsService.get(userId));
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    @Transactional
+    public void backfillKnowledgeForExistingFiles() {
+        for (StudyFile file : fileRepository.findByKnowledgeEnabledTrue()) {
+            if (chunkRepository.countByFileId(file.getId()) == 0) {
+                rebuildKnowledge(file, file.getFolder().getOwner().getId());
+            }
+        }
+    }
+
+    private String toSearchableText(String content) {
+        if (content == null) {
+            return "";
+        }
+        return content
+                .replaceAll("(?is)<(script|style)[^>]*>.*?</\\1>", " ")
+                .replaceAll("(?i)</(p|div|li|tr|h[1-6])>", "\n")
+                .replaceAll("(?i)</t[dh]>", " ")
+                .replaceAll("(?i)<br\\s*/?>", "\n")
+                .replaceAll("<[^>]+>", " ")
+                .replace("&nbsp;", " ")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&")
+                .replaceAll("[ \\t\\x0B\\f\\r]+", " ")
+                .replaceAll("\\n{3,}", "\n\n");
     }
 
     private FileResponse toResponse(StudyFile file) {
         return new FileResponse(file.getId(), file.getFolder().getId(), file.getOriginalName(), file.getTag(),
-                file.getContentType(), file.getExtractedText(), file.getUploadedAt());
+                file.getContentType(), file.getExtractedText(), file.isKnowledgeEnabled(), file.getUploadedAt());
     }
 }

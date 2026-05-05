@@ -13,10 +13,17 @@ public class FileDtos {
             FileTag tag,
             String contentType,
             String extractedText,
+            boolean knowledgeEnabled,
             Instant uploadedAt
     ) {
     }
 
     public record UpdateFileTextRequest(@NotBlank String extractedText, @NotNull FileTag tag) {
+    }
+
+    public record UpdateKnowledgeStatusRequest(@NotNull Boolean knowledgeEnabled) {
+    }
+
+    public record MoveFileRequest(@NotNull Long folderId) {
     }
 }
