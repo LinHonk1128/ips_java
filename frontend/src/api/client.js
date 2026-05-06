@@ -71,7 +71,8 @@ export const fileApi = {
 }
 
 export const chatApi = {
-  ask: (payload) => api('/chat', { method: 'POST', body: JSON.stringify(payload) })
+  ask: (payload) => api('/chat', { method: 'POST', body: JSON.stringify(payload) }),
+  createNote: (payload) => api('/chat/note', { method: 'POST', body: JSON.stringify(payload) })
 }
 
 export const aiSettingsApi = {

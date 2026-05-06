@@ -14,6 +14,7 @@ public class FileDtos {
             String contentType,
             String extractedText,
             boolean knowledgeEnabled,
+            int pageCount,
             Instant uploadedAt
     ) {
     }

@@ -190,7 +190,7 @@
             >
               <FileText :size="18" />
               <div class="file-main">
-                <span class="file-name">{{ file.originalName }}</span>
+                <span class="file-name">{{ displayFileName(file) }}</span>
                 <div class="file-meta">
                   <b>{{ tagLabel(file.tag) }}</b>
                   <em class="knowledge-badge" :class="{ off: !file.knowledgeEnabled }">
@@ -218,7 +218,7 @@
           </div>
 
           <form v-if="movingFile" class="file-move-panel" @submit.prevent="moveFile">
-            <strong>移动“{{ movingFile.originalName }}”到</strong>
+            <strong>移动“{{ displayFileName(movingFile) }}”到</strong>
             <select v-model="moveFileTargetId">
               <option v-for="target in fileMoveTargetOptions" :key="target.id" :value="String(target.id)">
                 {{ folderOptionLabel(target) }}
@@ -247,6 +247,37 @@
                 设置
               </button>
             </div>
+            <div class="history-actions">
+              <div class="history-menu">
+                <button class="secondary-btn slim history-trigger" type="button" :disabled="!activeFolder" @click="historyPanelOpen = !historyPanelOpen">
+                  <Clock :size="16" />
+                  历史记录
+                  <span>{{ folderChatHistories.length }}</span>
+                </button>
+                <div v-if="historyPanelOpen" class="history-popover">
+                  <button
+                    v-for="item in folderChatHistories"
+                    :key="item.id"
+                    type="button"
+                    class="history-title"
+                    :class="{ active: item.id === activeConversationIds[item.mode] && item.mode === chatForm.mode }"
+                    @click="openConversation(item)"
+                  >
+                    <strong>{{ item.title }}</strong>
+                    <span>{{ chatModeLabel(item.mode) }} · {{ formatHistoryTime(item.updatedAt) }}</span>
+                  </button>
+                  <div v-if="folderChatHistories.length === 0" class="history-empty">当前文件夹暂无历史记录</div>
+                </div>
+              </div>
+              <button class="secondary-btn slim" type="button" :disabled="!activeFolder" @click="startNewConversation">
+                <RotateCcw :size="16" />
+                新对话
+              </button>
+              <button class="secondary-btn slim" type="button" :disabled="!activeFolder || !currentChatHasMessages || noteLoading" @click="createNoteFromConversation">
+                <NotebookPen :size="16" />
+                {{ noteLoading ? '整理中' : '整理为笔记' }}
+              </button>
+            </div>
           </div>
 
           <div class="chat-log">
@@ -262,7 +293,7 @@
                   >
                     {{ part.text }}
                   </button>
-                  <span v-else>{{ part.text }}</span>
+                  <span v-else v-html="renderRichText(part.text)"></span>
                 </template>
               </div>
             </article>
@@ -332,7 +363,7 @@
               >
                 <FileText :size="18" />
                 <div class="file-main">
-                  <span class="file-name">{{ file.originalName }}</span>
+                  <span class="file-name">{{ displayFileName(file) }}</span>
                   <div class="file-meta">
                     <b>{{ tagLabel(file.tag) }}</b>
                     <em class="knowledge-badge" :class="{ off: !file.knowledgeEnabled }">
@@ -357,7 +388,7 @@
                 </div>
               </div>
               <form v-if="movingFile" class="file-move-panel compact-panel" @submit.prevent="moveFile">
-                <strong>移动“{{ movingFile.originalName }}”到</strong>
+                <strong>移动“{{ displayFileName(movingFile) }}”到</strong>
                 <select v-model="moveFileTargetId">
                   <option v-for="target in fileMoveTargetOptions" :key="target.id" :value="String(target.id)">
                     {{ folderOptionLabel(target) }}
@@ -375,7 +406,7 @@
 
             <div v-if="activeFile" class="editor-panel">
               <div class="editor-head">
-                <strong>{{ activeFile.originalName }}</strong>
+                <strong>{{ displayFileName(activeFile) }}</strong>
                 <select v-model="activeFile.tag">
                   <option value="TEXTBOOK">教材</option>
                   <option value="MATERIAL">资料</option>
@@ -383,6 +414,20 @@
                   <option value="EXERCISE">习题</option>
                   <option value="OTHER">其他</option>
                 </select>
+              </div>
+              <div class="page-toolbar">
+                <button class="secondary-btn slim" type="button" :disabled="activeFilePageIndex === 0" @click="goFilePage(activeFilePageIndex - 1)">
+                  上一页
+                </button>
+                <select :value="activeFilePageIndex" @change="goFilePage(Number($event.target.value))">
+                  <option v-for="(page, index) in activeFilePages" :key="index" :value="index">
+                    第 {{ index + 1 }} 页
+                  </option>
+                </select>
+                <button class="secondary-btn slim" type="button" :disabled="activeFilePageIndex >= activeFilePages.length - 1" @click="goFilePage(activeFilePageIndex + 1)">
+                  下一页
+                </button>
+                <span>共 {{ activeFilePages.length }} 页</span>
               </div>
               <div class="rich-toolbar" aria-label="文档编辑工具栏">
                 <button class="icon-btn mini" type="button" title="加粗" @click="formatEditor('bold')">
@@ -414,6 +459,7 @@
                 contenteditable="true"
                 spellcheck="false"
                 @input="syncEditorContent"
+                @blur="renderCurrentEditorPage"
               ></div>
               <button class="primary-btn compact" @click="saveFileText" :disabled="loading">
                 <Save :size="17" />
@@ -560,6 +606,7 @@ import {
   Bold,
   Bot,
   ChevronRight,
+  Clock,
   FileText,
   Folder,
   FolderOpen,
@@ -574,6 +621,7 @@ import {
   ListOrdered,
   MessageSquare,
   MoveRight,
+  NotebookPen,
   Palette,
   Pencil,
   RefreshCw,
@@ -602,11 +650,17 @@ const activePage = ref('library')
 const uploadTag = ref('NOTE')
 const fileInput = ref(null)
 const editorElement = ref(null)
+const activeFilePages = ref([])
+const activeFilePageIndex = ref(0)
 const editorTextColor = ref('#24231f')
 const loading = ref(false)
 const chatLoading = ref(false)
+const noteLoading = ref(false)
 const error = ref('')
 const chatMessages = reactive({ QA: [], TEACHER: [] })
+const activeConversationIds = reactive({ QA: null, TEACHER: null })
+const folderChatHistories = ref([])
+const historyPanelOpen = ref(false)
 const activeSource = ref(null)
 const movingFile = ref(null)
 const editingFolder = ref(null)
@@ -626,6 +680,7 @@ const chatForm = reactive({ mode: 'QA', question: '' })
 const aiSettings = reactive(loadAiSettings())
 const settingsSaved = ref(false)
 const maxFolderDepth = 3
+const chatHistoryRetentionMs = 24 * 60 * 60 * 1000
 
 const navItems = [
   { key: 'library', label: '我的资料', icon: Library },
@@ -656,6 +711,7 @@ const pageMeta = {
 const pageTitle = computed(() => pageMeta[activePage.value].title)
 const pageDescription = computed(() => pageMeta[activePage.value].description)
 const messages = computed(() => chatMessages[chatForm.mode])
+const currentChatHasMessages = computed(() => messages.value.length > 0)
 const visibleFolders = computed(() => {
   const parentId = activeFolder.value?.id ?? null
   return folders.value.filter((folder) => (folder.parentId ?? null) === parentId)
@@ -709,6 +765,156 @@ const emptyFolderDescription = computed(() =>
   activeFolder.value ? '可以继续上传文件，或在未达到 2 层时创建子文件夹。' : '文件夹会作为上传、编辑和知识问答的工作范围。'
 )
 
+function folderChatHistoryKey(folderId) {
+  const userKey = session.value?.userId || session.value?.username || 'guest'
+  return `smart_exam_chat_histories_v2:${userKey}:${folderId}`
+}
+
+function legacyChatHistoryKey(folderId, mode) {
+  const userKey = session.value?.userId || session.value?.username || 'guest'
+  return `smart_exam_chat_history_v1:${userKey}:${folderId}:${mode}`
+}
+
+function loadChatHistory(folderId) {
+  clearChatMessages()
+  folderChatHistories.value = []
+  activeConversationIds.QA = null
+  activeConversationIds.TEACHER = null
+  historyPanelOpen.value = false
+  if (!folderId) return
+  folderChatHistories.value = loadFolderHistories(folderId)
+  ;['QA', 'TEACHER'].forEach((mode) => {
+    const latest = folderChatHistories.value.find((item) => item.mode === mode)
+    if (!latest) return
+    activeConversationIds[mode] = latest.id
+    chatMessages[mode].push(...latest.messages)
+  })
+}
+
+function loadFolderHistories(folderId) {
+  const key = folderChatHistoryKey(folderId)
+  const now = Date.now()
+  let histories = []
+  try {
+    const raw = localStorage.getItem(key)
+    histories = raw ? JSON.parse(raw) : []
+    if (!Array.isArray(histories)) histories = []
+  } catch {
+    histories = []
+  }
+
+  histories.push(...loadLegacyHistories(folderId))
+  const valid = dedupeHistories(histories)
+    .filter((item) => item.expiresAt && item.expiresAt > now && Array.isArray(item.messages) && item.messages.length > 0)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+  localStorage.setItem(key, JSON.stringify(valid))
+  return valid
+}
+
+function loadLegacyHistories(folderId) {
+  const now = Date.now()
+  return ['QA', 'TEACHER'].flatMap((mode) => {
+    const key = legacyChatHistoryKey(folderId, mode)
+    try {
+      const raw = localStorage.getItem(key)
+      if (!raw) return []
+      const saved = JSON.parse(raw)
+      localStorage.removeItem(key)
+      if (!saved?.expiresAt || saved.expiresAt <= now || !Array.isArray(saved.messages) || saved.messages.length === 0) return []
+      return [normalizeHistoryItem({
+        id: crypto.randomUUID(),
+        mode,
+        messages: saved.messages,
+        createdAt: now,
+        updatedAt: now,
+        expiresAt: Math.min(saved.expiresAt, now + chatHistoryRetentionMs)
+      })]
+    } catch {
+      localStorage.removeItem(key)
+      return []
+    }
+  })
+}
+
+function saveCurrentChatHistory() {
+  if (!activeFolder.value) return
+  const savedMessages = messages.value.map(({ role, content, sources }) => ({ role, content, sources }))
+  if (savedMessages.length === 0) return
+  const now = Date.now()
+  const id = activeConversationIds[chatForm.mode] || crypto.randomUUID()
+  activeConversationIds[chatForm.mode] = id
+  const existing = folderChatHistories.value.find((item) => item.id === id)
+  const saved = normalizeHistoryItem({
+    ...existing,
+    id,
+    mode: chatForm.mode,
+    messages: savedMessages,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+    expiresAt: now + chatHistoryRetentionMs
+  })
+  folderChatHistories.value = dedupeHistories([saved, ...folderChatHistories.value])
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+  localStorage.setItem(folderChatHistoryKey(activeFolder.value.id), JSON.stringify(folderChatHistories.value))
+}
+
+function startNewConversation() {
+  if (!activeFolder.value) return
+  saveCurrentChatHistory()
+  messages.value.splice(0)
+  activeConversationIds[chatForm.mode] = null
+  activeSource.value = null
+  historyPanelOpen.value = false
+}
+
+function openConversation(item) {
+  chatForm.mode = item.mode
+  chatMessages[item.mode].splice(0, chatMessages[item.mode].length, ...item.messages)
+  activeConversationIds[item.mode] = item.id
+  activeSource.value = null
+  historyPanelOpen.value = false
+}
+
+function normalizeHistoryItem(item) {
+  const messages = Array.isArray(item.messages) ? item.messages : []
+  return {
+    id: item.id || crypto.randomUUID(),
+    mode: item.mode === 'TEACHER' ? 'TEACHER' : 'QA',
+    title: historyTitle(messages),
+    messages,
+    createdAt: Number(item.createdAt || Date.now()),
+    updatedAt: Number(item.updatedAt || Date.now()),
+    expiresAt: Number(item.expiresAt || Date.now() + chatHistoryRetentionMs)
+  }
+}
+
+function dedupeHistories(histories) {
+  const byId = new Map()
+  histories.map(normalizeHistoryItem).forEach((item) => {
+    const existing = byId.get(item.id)
+    if (!existing || item.updatedAt > existing.updatedAt) {
+      byId.set(item.id, item)
+    }
+  })
+  return Array.from(byId.values())
+}
+
+function historyTitle(messages) {
+  const firstQuestion = messages.find((message) => message.role === 'user')?.content || '新的对话'
+  const title = firstQuestion.replace(/\s+/g, ' ').trim()
+  return title.length > 22 ? `${title.slice(0, 22)}...` : title
+}
+
+function chatModeLabel(mode) {
+  return mode === 'TEACHER' ? '教师模式' : '答疑模式'
+}
+
+function formatHistoryTime(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '刚刚'
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
 onMounted(() => {
   if (session.value) {
     loadFolders()
@@ -761,6 +967,10 @@ function selectRoot() {
   clearEditorContent()
   files.value = []
   clearChatMessages()
+  activeConversationIds.QA = null
+  activeConversationIds.TEACHER = null
+  folderChatHistories.value = []
+  historyPanelOpen.value = false
   activeSource.value = null
   cancelMoveFile()
   cancelEditFolder()
@@ -855,7 +1065,6 @@ async function moveFile() {
       activeFile.value = null
       clearEditorContent()
     }
-    clearChatMessages()
     cancelMoveFile()
   })
 }
@@ -871,7 +1080,7 @@ async function selectFolder(folder) {
   activeFile.value = null
   clearEditorContent()
   files.value = await fileApi.list(folder.id)
-  clearChatMessages()
+  loadChatHistory(folder.id)
   activeSource.value = null
   cancelMoveFile()
   cancelEditFolder()
@@ -879,7 +1088,7 @@ async function selectFolder(folder) {
 
 function selectFile(file) {
   activeFile.value = { ...file }
-  nextTick(() => setEditorContent(activeFile.value.extractedText))
+  nextTick(() => setEditorContent(activeFile.value.extractedText, 0))
 }
 
 function setChatMode(mode) {
@@ -887,12 +1096,16 @@ function setChatMode(mode) {
   activeSource.value = null
 }
 
-function setEditorContent(content = '') {
+function setEditorContent(content = '', pageIndex = activeFilePageIndex.value) {
   if (!editorElement.value) return
-  editorElement.value.innerHTML = isHtmlContent(content) ? content : plainTextToEditorHtml(content)
+  activeFilePages.value = paginateEditorContent(content)
+  activeFilePageIndex.value = clampPageIndex(pageIndex)
+  setEditorPage(activeFilePageIndex.value)
 }
 
 function clearEditorContent() {
+  activeFilePages.value = []
+  activeFilePageIndex.value = 0
   if (editorElement.value) {
     editorElement.value.innerHTML = ''
   }
@@ -900,8 +1113,60 @@ function clearEditorContent() {
 
 function syncEditorContent() {
   if (activeFile.value && editorElement.value) {
-    activeFile.value.extractedText = editorElement.value.innerHTML
+    activeFilePages.value[activeFilePageIndex.value] = editorElement.value.innerHTML
+    activeFile.value.extractedText = activeFilePages.value.join('')
   }
+}
+
+function setEditorPage(pageIndex) {
+  if (!editorElement.value) return
+  editorElement.value.innerHTML = renderEditorHtml(activeFilePages.value[pageIndex] || '')
+}
+
+function renderCurrentEditorPage() {
+  syncEditorContent()
+  setEditorPage(activeFilePageIndex.value)
+  syncEditorContent()
+}
+
+function goFilePage(pageIndex) {
+  syncEditorContent()
+  activeFilePageIndex.value = clampPageIndex(pageIndex)
+  setEditorPage(activeFilePageIndex.value)
+}
+
+function clampPageIndex(pageIndex) {
+  const maxIndex = Math.max(0, activeFilePages.value.length - 1)
+  return Math.min(Math.max(Number.isFinite(pageIndex) ? pageIndex : 0, 0), maxIndex)
+}
+
+function paginateEditorContent(content = '') {
+  const html = isHtmlContent(content) ? content : plainTextToEditorHtml(content)
+  const template = document.createElement('template')
+  template.innerHTML = html || '<p><br></p>'
+  const blocks = Array.from(template.content.childNodes)
+  const pages = []
+  let current = ''
+  let currentLength = 0
+  const maxPageChars = 3500
+
+  blocks.forEach((node) => {
+    const wrapper = document.createElement('div')
+    wrapper.appendChild(node.cloneNode(true))
+    const blockHtml = wrapper.innerHTML
+    const blockLength = (node.textContent || '').trim().length
+    if (current && currentLength + blockLength > maxPageChars) {
+      pages.push(current)
+      current = ''
+      currentLength = 0
+    }
+    current += blockHtml
+    currentLength += blockLength
+  })
+  if (current || pages.length === 0) {
+    pages.push(current || '<p><br></p>')
+  }
+  return pages
 }
 
 function formatEditor(command) {
@@ -931,8 +1196,120 @@ function plainTextToEditorHtml(text = '') {
     .split(/\n{2,}/)
     .map((block) => block.trim())
     .filter(Boolean)
-    .map((block) => `<p>${escapeHtml(block).replace(/\n/g, '<br>')}</p>`)
+    .map((block) => `<p>${renderRichText(block).replace(/\n/g, '<br>')}</p>`)
     .join('')
+}
+
+function renderEditorHtml(content = '') {
+  if (!content) return '<p><br></p>'
+  return isHtmlContent(content) ? renderMathInHtml(content) : plainTextToEditorHtml(content)
+}
+
+function renderMathInHtml(html = '') {
+  const template = document.createElement('template')
+  template.innerHTML = html
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT)
+  const textNodes = []
+  let node = walker.nextNode()
+  while (node) {
+    if (node.textContent && /(?:\$|\\\(|\\\[)/.test(node.textContent)) {
+      textNodes.push(node)
+    }
+    node = walker.nextNode()
+  }
+  textNodes.forEach((textNode) => {
+    const wrapper = document.createElement('span')
+    wrapper.innerHTML = renderRichText(textNode.textContent)
+    textNode.replaceWith(...Array.from(wrapper.childNodes))
+  })
+  return template.innerHTML || '<p><br></p>'
+}
+
+function renderRichText(text = '') {
+  const parts = splitMathSegments(text)
+  return parts.map((part) => {
+    if (part.type === 'math') {
+      return `<span class="${part.display ? 'math-block' : 'math-inline'}">${renderMathExpression(part.text)}</span>`
+    }
+    return renderMarkdownInline(part.text)
+  }).join('')
+}
+
+function splitMathSegments(text = '') {
+  const segments = []
+  let cursor = 0
+  while (cursor < text.length) {
+    const next = findNextMathStart(text, cursor)
+    if (!next) {
+      segments.push({ type: 'text', text: text.slice(cursor) })
+      break
+    }
+    if (next.index > cursor) {
+      segments.push({ type: 'text', text: text.slice(cursor, next.index) })
+    }
+    const end = text.indexOf(next.close, next.index + next.open.length)
+    if (end === -1) {
+      segments.push({ type: 'text', text: text.slice(next.index) })
+      break
+    }
+    segments.push({
+      type: 'math',
+      text: text.slice(next.index + next.open.length, end),
+      display: next.display
+    })
+    cursor = end + next.close.length
+  }
+  return segments
+}
+
+function findNextMathStart(text, startIndex) {
+  const candidates = [
+    { open: '$$', close: '$$', display: true },
+    { open: '\\[', close: '\\]', display: true },
+    { open: '\\(', close: '\\)', display: false },
+    { open: '$', close: '$', display: false }
+  ]
+    .map((candidate) => ({ ...candidate, index: text.indexOf(candidate.open, startIndex) }))
+    .filter((candidate) => candidate.index !== -1)
+    .sort((a, b) => a.index - b.index || b.open.length - a.open.length)
+  return candidates[0] || null
+}
+
+function renderMarkdownInline(text = '') {
+  return escapeHtml(text).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+}
+
+function renderMathExpression(expression = '') {
+  let html = escapeHtml(expression.trim())
+    .replace(/\\text\{([^{}]+)\}/g, '$1')
+    .replace(/\\mathrm\{([^{}]+)\}/g, '$1')
+    .replace(/\\left|\\right/g, '')
+    .replace(/\\,/g, ' ')
+    .replace(/\\;/g, ' ')
+    .replace(/\\cdot/g, '·')
+    .replace(/\\times/g, '×')
+    .replace(/\\leq?/g, '≤')
+    .replace(/\\geq?/g, '≥')
+    .replace(/\\neq/g, '≠')
+    .replace(/\\approx/g, '≈')
+    .replace(/\\Omega/g, 'Ω')
+    .replace(/\\omega/g, 'ω')
+    .replace(/\\mu/g, 'μ')
+    .replace(/\\alpha/g, 'α')
+    .replace(/\\beta/g, 'β')
+    .replace(/\\gamma/g, 'γ')
+    .replace(/\\Delta/g, 'Δ')
+    .replace(/\\theta/g, 'θ')
+    .replace(/\\phi/g, 'φ')
+
+  html = html.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, (_, numerator, denominator) => (
+    `<span class="math-frac"><span>${renderMathExpression(numerator)}</span><span>${renderMathExpression(denominator)}</span></span>`
+  ))
+  html = html.replace(/_\{([^{}]+)\}/g, (_, value) => `<sub>${renderMathExpression(value)}</sub>`)
+  html = html.replace(/\^\{([^{}]+)\}/g, (_, value) => `<sup>${renderMathExpression(value)}</sup>`)
+  html = html.replace(/_([A-Za-z0-9()+-])/g, '<sub>$1</sub>')
+  html = html.replace(/\^([A-Za-z0-9()+-])/g, '<sup>$1</sup>')
+  return html.replace(/\\/g, '')
 }
 
 function escapeHtml(text = '') {
@@ -952,7 +1329,7 @@ async function uploadFile() {
     activeFile.value = { ...uploaded }
     fileInput.value.value = ''
     await nextTick()
-    setEditorContent(activeFile.value.extractedText)
+    setEditorContent(activeFile.value.extractedText, 0)
   })
 }
 
@@ -967,7 +1344,7 @@ async function saveFileText() {
     files.value = files.value.map((file) => (file.id === saved.id ? saved : file))
     activeFile.value = { ...saved }
     await nextTick()
-    setEditorContent(activeFile.value.extractedText)
+    setEditorContent(activeFile.value.extractedText, activeFilePageIndex.value)
   })
 }
 
@@ -989,9 +1366,8 @@ async function toggleKnowledge(file) {
     if (activeFile.value?.id === saved.id) {
       activeFile.value = { ...saved }
       await nextTick()
-      setEditorContent(activeFile.value.extractedText)
+      setEditorContent(activeFile.value.extractedText, activeFilePageIndex.value)
     }
-    clearChatMessages()
     if (!saved.knowledgeEnabled && activeSource.value?.fileId === saved.id) {
       activeSource.value = null
     }
@@ -999,7 +1375,7 @@ async function toggleKnowledge(file) {
 }
 
 async function deleteFile(file) {
-  if (!file || !window.confirm(`确定删除“${file.originalName}”吗？`)) return
+  if (!file || !window.confirm(`确定删除“${displayFileName(file)}”吗？`)) return
   await run(async () => {
     await fileApi.delete(file.id)
     files.value = files.value.filter((item) => item.id !== file.id)
@@ -1007,7 +1383,6 @@ async function deleteFile(file) {
       activeFile.value = null
       clearEditorContent()
     }
-    clearChatMessages()
     if (activeSource.value?.fileId === file.id) {
       activeSource.value = null
     }
@@ -1018,14 +1393,31 @@ async function ask() {
   const question = chatForm.question.trim()
   if (!question || !activeFolder.value || chatLoading.value) return
   messages.value.push({ role: 'user', content: question })
+  saveCurrentChatHistory()
   chatForm.question = ''
   activeSource.value = null
   chatLoading.value = true
   await run(async () => {
     const response = await chatApi.ask({ ...aiSettings, ...chatForm, question, folderId: activeFolder.value.id })
     messages.value.push({ role: 'assistant', content: response.answer, sources: response.sources })
+    saveCurrentChatHistory()
   })
   chatLoading.value = false
+}
+
+async function createNoteFromConversation() {
+  if (!activeFolder.value || !currentChatHasMessages.value || noteLoading.value) return
+  noteLoading.value = true
+  await run(async () => {
+    const saved = await chatApi.createNote({
+      ...aiSettings,
+      folderId: activeFolder.value.id,
+      mode: chatForm.mode,
+      messages: messages.value.map(({ role, content }) => ({ role, content }))
+    })
+    files.value = [saved, ...files.value.filter((file) => file.id !== saved.id)]
+  })
+  noteLoading.value = false
 }
 
 function showSource(source) {
@@ -1061,7 +1453,12 @@ function messageParts(message) {
 }
 
 function sourceLabel(source) {
-  return `${source.fileName} · 片段 ${source.citationIndex || 1}`
+  return `${displayFileName({ originalName: source.fileName })} · 第 ${source.pageNumber || 1} 页 · 片段 ${source.citationIndex || 1}`
+}
+
+function displayFileName(file) {
+  const name = file?.originalName || file?.fileName || ''
+  return name.replace(/\.[^.\\/\s]+$/u, '')
 }
 
 async function openSourceFile(source) {
@@ -1077,7 +1474,7 @@ async function openSourceFile(source) {
     activePage.value = 'editor'
     activeSource.value = null
     await nextTick()
-    setEditorContent(activeFile.value.extractedText)
+    setEditorContent(activeFile.value.extractedText, Math.max(0, (source.pageNumber || 1) - 1))
     focusExcerpt(source.excerpt)
   })
 }
@@ -1222,6 +1619,10 @@ function logout() {
   activeFolder.value = null
   activeFile.value = null
   activeSource.value = null
+  folderChatHistories.value = []
+  activeConversationIds.QA = null
+  activeConversationIds.TEACHER = null
+  historyPanelOpen.value = false
   clearChatMessages()
 }
 

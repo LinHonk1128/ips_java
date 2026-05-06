@@ -24,6 +24,8 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class FileService {
+    private static final int PAGE_SIZE = 3500;
+
     private final StudyFileRepository fileRepository;
     private final KnowledgeChunkRepository chunkRepository;
     private final FolderService folderService;
@@ -82,6 +84,28 @@ public class FileService {
             throw new IllegalArgumentException(extractedText);
         }
         file.setExtractedText(extractedText);
+        file.setKnowledgeEnabled(true);
+        fileRepository.save(file);
+        rebuildKnowledge(file, userId);
+        return toResponse(file);
+    }
+
+    @Transactional
+    public FileResponse createTextNote(Long folderId, Long userId, String originalName, String content) throws IOException {
+        StudyFolder folder = folderService.requireOwned(folderId, userId);
+        Files.createDirectories(uploadDir.resolve(String.valueOf(userId)).resolve(String.valueOf(folderId)));
+        String safeName = originalName == null || originalName.isBlank() ? "对话整理笔记.md" : originalName;
+        Path target = uploadDir.resolve(String.valueOf(userId)).resolve(String.valueOf(folderId))
+                .resolve(UUID.randomUUID() + "-" + safeName.replaceAll("[\\\\/:*?\"<>|]", "_"));
+        Files.writeString(target, content == null ? "" : content);
+
+        StudyFile file = new StudyFile();
+        file.setFolder(folder);
+        file.setOriginalName(safeName);
+        file.setStoredPath(target.toString());
+        file.setContentType("text/markdown");
+        file.setTag(FileTag.NOTE);
+        file.setExtractedText(content == null ? "" : content);
         file.setKnowledgeEnabled(true);
         fileRepository.save(file);
         rebuildKnowledge(file, userId);
@@ -163,6 +187,7 @@ public class FileService {
             chunk.setFile(file);
             chunk.setFolder(file.getFolder());
             chunk.setChunkIndex(index++);
+            chunk.setPageNumber(pageNumberForOffset(start));
             chunk.setContent(text.substring(start, Math.min(start + chunkSize, text.length())));
             chunks.add(chunkRepository.save(chunk));
             if (start + chunkSize >= text.length()) {
@@ -176,10 +201,28 @@ public class FileService {
     @Transactional
     public void backfillKnowledgeForExistingFiles() {
         for (StudyFile file : fileRepository.findByKnowledgeEnabledTrue()) {
-            if (chunkRepository.countByFileId(file.getId()) == 0) {
+            if (chunkRepository.countByFileId(file.getId()) == 0
+                    || shouldRebuildPageNumbers(file)) {
                 rebuildKnowledge(file, file.getFolder().getOwner().getId());
             }
         }
+    }
+
+    private boolean shouldRebuildPageNumbers(StudyFile file) {
+        return pageCount(file.getExtractedText()) > 1
+                && chunkRepository.countByFileIdAndPageNumberGreaterThan(file.getId(), 1) == 0;
+    }
+
+    private int pageNumberForOffset(int offset) {
+        return Math.max(1, offset / PAGE_SIZE + 1);
+    }
+
+    private int pageCount(String content) {
+        String text = toSearchableText(content).trim();
+        if (text.isBlank()) {
+            return 1;
+        }
+        return Math.max(1, (int) Math.ceil(text.length() / (double) PAGE_SIZE));
     }
 
     private String toSearchableText(String content) {
@@ -202,6 +245,7 @@ public class FileService {
 
     private FileResponse toResponse(StudyFile file) {
         return new FileResponse(file.getId(), file.getFolder().getId(), file.getOriginalName(), file.getTag(),
-                file.getContentType(), file.getExtractedText(), file.isKnowledgeEnabled(), file.getUploadedAt());
+                file.getContentType(), file.getExtractedText(), file.isKnowledgeEnabled(),
+                pageCount(file.getExtractedText()), file.getUploadedAt());
     }
 }

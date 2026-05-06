@@ -2,6 +2,8 @@ package com.example.exam.service;
 
 import com.example.exam.dto.ChatDtos.ChatRequest;
 import com.example.exam.dto.ChatDtos.ChatResponse;
+import com.example.exam.dto.ChatDtos.ConversationMessage;
+import com.example.exam.dto.ChatDtos.NoteRequest;
 import com.example.exam.dto.ChatDtos.Source;
 import com.example.exam.model.KnowledgeChunk;
 import com.example.exam.model.QuestionMode;
@@ -83,6 +85,89 @@ public class ChatService {
         return new ChatResponse(answer, sources);
     }
 
+    @Transactional(readOnly = true)
+    public String summarizeConversationAsNote(Long userId, NoteRequest request) {
+        folderRepository.findByIdAndOwnerId(request.folderId(), userId)
+                .orElseThrow(() -> new IllegalArgumentException("知识库不存在，或你没有访问权限"));
+        if (request.messages() == null || request.messages().isEmpty()) {
+            throw new IllegalArgumentException("当前对话为空，无法整理为笔记");
+        }
+        var settings = aiSettingsService.merge(
+                userId,
+                request.aiRole(),
+                request.systemPrompt(),
+                request.chatModel() == null ? request.model() : request.chatModel(),
+                request.chatEndpoint() == null ? request.endpoint() : request.chatEndpoint(),
+                request.chatApiKey() == null ? request.apiKey() : request.chatApiKey(),
+                request.embeddingModel(),
+                request.embeddingEndpoint(),
+                request.embeddingApiKey(),
+                request.embeddingDimensions()
+        );
+        String transcript = conversationTranscript(request.messages());
+        String prompt = """
+                请把下面这段考研复习问答重新整理成一份结构化学习笔记。
+
+                要求：
+                1. 不要简单复制双方对话，要提炼、合并、改写成笔记；
+                2. 保留关键概念、推导过程、易错点、结论和后续复习建议；
+                3. 使用 Markdown，标题层级清晰，适合直接存入资料文件夹；
+                4. 如果对话中有引用编号，可以保留在对应知识点后。
+
+                对话内容：
+                %s
+                """.formatted(transcript);
+        String note = callModel(settings, prompt);
+        if (note == null || note.isBlank()) {
+            note = localConversationNote(request.messages(), hasChatApiKey(settings));
+        }
+        return note.trim();
+    }
+
+    private String conversationTranscript(List<ConversationMessage> messages) {
+        return messages.stream()
+                .map(message -> {
+                    String role = "assistant".equalsIgnoreCase(message.role()) ? "助手" : "用户";
+                    return role + "：\n" + message.content();
+                })
+                .collect(java.util.stream.Collectors.joining("\n\n---\n\n"));
+    }
+
+    private String localConversationNote(List<ConversationMessage> messages, boolean modelConfigured) {
+        List<String> userQuestions = messages.stream()
+                .filter(message -> "user".equalsIgnoreCase(message.role()))
+                .map(ConversationMessage::content)
+                .filter(content -> content != null && !content.isBlank())
+                .toList();
+        List<String> assistantAnswers = messages.stream()
+                .filter(message -> "assistant".equalsIgnoreCase(message.role()))
+                .map(ConversationMessage::content)
+                .filter(content -> content != null && !content.isBlank())
+                .toList();
+        List<String> lines = new ArrayList<>();
+        lines.add("# 对话整理笔记");
+        if (modelConfigured) {
+            lines.add("> 大模型暂时没有返回有效整理结果，以下为本地提炼版。");
+        } else {
+            lines.add("> 未配置答题 API Key，以下为本地提炼版。");
+        }
+        lines.add("## 问题线索");
+        if (userQuestions.isEmpty()) {
+            lines.add("- 本次对话没有可整理的问题。");
+        } else {
+            userQuestions.forEach(question -> lines.add("- " + excerpt(question)));
+        }
+        lines.add("## 核心内容");
+        if (assistantAnswers.isEmpty()) {
+            lines.add("- 暂无助手回答可整理。");
+        } else {
+            assistantAnswers.forEach(answer -> lines.add("- " + excerpt(answer)));
+        }
+        lines.add("## 复习建议");
+        lines.add("- 回到原资料核对引用片段，并把仍不确定的概念作为下一轮提问入口。");
+        return String.join("\n\n", lines);
+    }
+
     private List<Source> buildSources(List<KnowledgeChunk> chunks, String question, String answer) {
         List<String> terms = searchTerms((question == null ? "" : question) + " " + (answer == null ? "" : answer));
         return IntStream.range(0, chunks.size())
@@ -93,6 +178,7 @@ public class ChatService {
                         chunk.getFile().getId(),
                         chunk.getFolder().getId(),
                         chunk.getFile().getOriginalName(),
+                        chunk.getPageNumber(),
                         contextualExcerpt(chunk.getContent(), terms));
                 })
                 .toList();
@@ -272,9 +358,10 @@ public class ChatService {
         return IntStream.range(0, chunks.size())
                 .mapToObj(index -> {
                     KnowledgeChunk chunk = chunks.get(index);
-                    return "资料片段 [%d]\n文件：%s\n内容：\n%s".formatted(
+                    return "资料片段 [%d]\n文件：%s\n页码：第 %d 页\n内容：\n%s".formatted(
                             index + 1,
                             chunk.getFile().getOriginalName(),
+                            chunk.getPageNumber(),
                             chunk.getContent()
                     );
                 })

@@ -17,6 +17,9 @@ public class KnowledgeChunk {
     @Column(nullable = false)
     private int chunkIndex;
 
+    @Column(nullable = false, columnDefinition = "integer default 1")
+    private int pageNumber = 1;
+
     @Lob
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
@@ -47,6 +50,14 @@ public class KnowledgeChunk {
 
     public void setChunkIndex(int chunkIndex) {
         this.chunkIndex = chunkIndex;
+    }
+
+    public int getPageNumber() {
+        return pageNumber;
+    }
+
+    public void setPageNumber(int pageNumber) {
+        this.pageNumber = pageNumber;
     }
 
     public String getContent() {

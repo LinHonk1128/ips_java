@@ -14,3 +14,6 @@ ALTER TABLE IF EXISTS study_file
 UPDATE study_file
 SET knowledge_enabled = true
 WHERE knowledge_enabled IS NULL;
+
+ALTER TABLE IF EXISTS knowledge_chunk
+    ADD COLUMN IF NOT EXISTS page_number integer DEFAULT 1 NOT NULL;

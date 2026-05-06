@@ -25,9 +25,31 @@ public class ChatDtos {
     ) {
     }
 
-    public record Source(Integer citationIndex, Long fileId, Long folderId, String fileName, String excerpt) {
+    public record Source(Integer citationIndex, Long fileId, Long folderId, String fileName, Integer pageNumber, String excerpt) {
     }
 
     public record ChatResponse(String answer, List<Source> sources) {
+    }
+
+    public record ConversationMessage(@NotBlank String role, @NotBlank String content) {
+    }
+
+    public record NoteRequest(
+            @NotNull Long folderId,
+            @NotNull QuestionMode mode,
+            @NotNull List<ConversationMessage> messages,
+            String model,
+            String apiKey,
+            String endpoint,
+            String aiRole,
+            String systemPrompt,
+            String chatModel,
+            String chatEndpoint,
+            String chatApiKey,
+            String embeddingModel,
+            String embeddingEndpoint,
+            String embeddingApiKey,
+            Integer embeddingDimensions
+    ) {
     }
 }
