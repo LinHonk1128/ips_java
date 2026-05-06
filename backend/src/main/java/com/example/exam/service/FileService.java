@@ -116,6 +116,9 @@ public class FileService {
     public FileResponse updateText(Long fileId, Long userId, UpdateFileTextRequest request) {
         StudyFile file = fileRepository.findByIdAndFolderOwnerId(fileId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("File not found or access denied"));
+        if (request.originalName() != null && !request.originalName().isBlank()) {
+            file.setOriginalName(sanitizeDisplayFileName(request.originalName()));
+        }
         file.setExtractedText(request.extractedText());
         file.setTag(request.tag());
         file.setKnowledgeEnabled(true);
@@ -241,6 +244,11 @@ public class FileService {
                 .replace("&amp;", "&")
                 .replaceAll("[ \\t\\x0B\\f\\r]+", " ")
                 .replaceAll("\\n{3,}", "\n\n");
+    }
+
+    private String sanitizeDisplayFileName(String originalName) {
+        String cleaned = originalName.trim().replaceAll("[\\\\/:*?\"<>|]", "_");
+        return cleaned.isBlank() ? "未命名文件" : cleaned;
     }
 
     private FileResponse toResponse(StudyFile file) {

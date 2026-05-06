@@ -64,6 +64,16 @@
           <button class="folder-item" :class="{ selected: !activeFolder }" @click="selectRoot">
             <FolderOpen :size="18" />
             <span>我的资料</span>
+            <ChevronRight
+              class="folder-toggle"
+              :class="{ open: !rootFolderCollapsed }"
+              :size="15"
+              role="button"
+              tabindex="0"
+              @click.stop="toggleRootFolder"
+              @keydown.enter.stop.prevent="toggleRootFolder"
+              @keydown.space.stop.prevent="toggleRootFolder"
+            />
           </button>
           <button
             v-for="folder in folderTree"
@@ -75,6 +85,18 @@
           >
             <Folder :size="18" />
             <span>{{ folder.name }}</span>
+            <ChevronRight
+              v-if="hasFolderChildren(folder.id)"
+              class="folder-toggle"
+              :class="{ open: !collapsedFolderIds.has(folder.id) }"
+              :size="15"
+              role="button"
+              tabindex="0"
+              @click.stop="toggleFolderCollapse(folder)"
+              @keydown.enter.stop.prevent="toggleFolderCollapse(folder)"
+              @keydown.space.stop.prevent="toggleFolderCollapse(folder)"
+            />
+            <span v-else class="folder-toggle spacer"></span>
           </button>
           <div v-if="folders.length === 0" class="empty-note">还没有文件夹，请先到“我的资料”页面创建。</div>
         </div>
@@ -185,6 +207,7 @@
               role="button"
               tabindex="0"
               @click="selectFile(file)"
+              @dblclick="openFileInEditor(file)"
               @keydown.enter="selectFile(file)"
               @keydown.space.prevent="selectFile(file)"
             >
@@ -255,17 +278,20 @@
                   <span>{{ folderChatHistories.length }}</span>
                 </button>
                 <div v-if="historyPanelOpen" class="history-popover">
-                  <button
+                  <div
                     v-for="item in folderChatHistories"
                     :key="item.id"
-                    type="button"
-                    class="history-title"
+                    class="history-row"
                     :class="{ active: item.id === activeConversationIds[item.mode] && item.mode === chatForm.mode }"
-                    @click="openConversation(item)"
                   >
-                    <strong>{{ item.title }}</strong>
-                    <span>{{ chatModeLabel(item.mode) }} · {{ formatHistoryTime(item.updatedAt) }}</span>
-                  </button>
+                    <button type="button" class="history-title" @click="openConversation(item)">
+                      <strong>{{ item.title }}</strong>
+                      <span>{{ chatModeLabel(item.mode) }} · {{ formatHistoryTime(item.updatedAt) }}</span>
+                    </button>
+                    <button class="icon-btn mini danger history-delete" type="button" title="删除历史记录" @click="deleteChatHistory(item)">
+                      <Trash2 :size="14" />
+                    </button>
+                  </div>
                   <div v-if="folderChatHistories.length === 0" class="history-empty">当前文件夹暂无历史记录</div>
                 </div>
               </div>
@@ -406,7 +432,17 @@
 
             <div v-if="activeFile" class="editor-panel">
               <div class="editor-head">
-                <strong>{{ displayFileName(activeFile) }}</strong>
+                <input
+                  v-if="editingFileName"
+                  ref="fileNameInput"
+                  v-model="editingFileNameValue"
+                  class="file-name-edit"
+                  maxlength="180"
+                  @keydown.enter.prevent="saveFileName"
+                  @keydown.esc.prevent="cancelFileNameEdit"
+                  @blur="saveFileName"
+                />
+                <strong v-else title="双击修改文件名" @dblclick="startFileNameEdit">{{ displayFileName(activeFile) }}</strong>
                 <select v-model="activeFile.tag">
                   <option value="TEXTBOOK">教材</option>
                   <option value="MATERIAL">资料</option>
@@ -490,6 +526,33 @@
                 <p>这些设置会应用到知识问答和教师模式，适合按你的复习习惯调整回答风格。</p>
               </div>
 
+              <div class="settings-presets">
+                <label>
+                  设置预设
+                  <select v-model="selectedAiPresetId" @change="syncSelectedAiPresetName">
+                    <option value="">选择已保存的设置</option>
+                    <option v-for="preset in aiSettingPresets" :key="preset.id" :value="preset.id">
+                      {{ preset.name }}
+                    </option>
+                  </select>
+                </label>
+                <button class="secondary-btn compact" type="button" :disabled="!selectedAiPresetId" @click="applyAiPreset">
+                  <RotateCcw :size="16" />
+                  恢复
+                </button>
+                <button class="icon-btn mini danger" type="button" title="删除预设" :disabled="!selectedAiPresetId" @click="deleteAiPreset">
+                  <Trash2 :size="15" />
+                </button>
+                <label>
+                  预设名称
+                  <input v-model="aiPresetName" maxlength="60" placeholder="例如：专业课答疑 - Qwen" />
+                </label>
+                <button class="primary-btn compact" type="button" :disabled="!aiPresetName.trim()" @click="saveAiPreset">
+                  <Save :size="16" />
+                  保存为预设
+                </button>
+              </div>
+
               <label>
                 角色定位
                 <input v-model="aiSettings.aiRole" maxlength="80" placeholder="例如：严谨的考研专业课答疑老师" />
@@ -518,7 +581,8 @@
                     <option value="gpt-4o">gpt-4o</option>
                     <option value="gpt-4.1-mini">gpt-4.1-mini</option>
                     <option value="qwen-plus">qwen-plus</option>
-                    <option value="deepseek-chat">deepseek-chat</option>
+                    <option value="deepseek-v4-flash">deepseek-v4-flash</option>
+                    <option value="deepseek-v4-pro">deepseek-v4-pro</option>
                   </select>
                 </label>
                 <label>
@@ -664,7 +728,13 @@ const historyPanelOpen = ref(false)
 const activeSource = ref(null)
 const movingFile = ref(null)
 const editingFolder = ref(null)
+const editingFileName = ref(false)
+const editingFileNameValue = ref('')
+const savingFileName = ref(false)
+const fileNameInput = ref(null)
 const moveFileTargetId = ref('')
+const rootFolderCollapsed = ref(false)
+const collapsedFolderIds = ref(new Set())
 const defaultAiSettings = {
   aiRole: '严谨的考研答疑老师',
   systemPrompt: '优先依据当前知识库回答；给出可追溯依据；如果资料不足，明确说明无法从知识库确认。',
@@ -676,8 +746,12 @@ const defaultAiSettings = {
   embeddingEndpoint: 'https://api.openai.com/v1/embeddings',
   embeddingDimensions: 1536
 }
+const aiPresetStorageKey = 'smart_exam_ai_setting_presets'
 const chatForm = reactive({ mode: 'QA', question: '' })
 const aiSettings = reactive(loadAiSettings())
+const aiSettingPresets = ref(loadAiSettingPresets())
+const selectedAiPresetId = ref('')
+const aiPresetName = ref('')
 const settingsSaved = ref(false)
 const maxFolderDepth = 3
 const chatHistoryRetentionMs = 24 * 60 * 60 * 1000
@@ -729,10 +803,14 @@ const folderTree = computed(() => {
   const appendChildren = (parentId) => {
     ;(byParent.get(parentId) || []).forEach((folder) => {
       ordered.push(folder)
-      appendChildren(folder.id)
+      if (!collapsedFolderIds.value.has(folder.id)) {
+        appendChildren(folder.id)
+      }
     })
   }
-  appendChildren(null)
+  if (!rootFolderCollapsed.value) {
+    appendChildren(null)
+  }
   return ordered
 })
 const folderPath = computed(() => {
@@ -875,6 +953,18 @@ function openConversation(item) {
   historyPanelOpen.value = false
 }
 
+function deleteChatHistory(item) {
+  if (!activeFolder.value || !item) return
+  if (!window.confirm(`确定删除“${item.title}”这条历史记录吗？`)) return
+  folderChatHistories.value = folderChatHistories.value.filter((history) => history.id !== item.id)
+  localStorage.setItem(folderChatHistoryKey(activeFolder.value.id), JSON.stringify(folderChatHistories.value))
+  if (activeConversationIds[item.mode] === item.id) {
+    chatMessages[item.mode].splice(0)
+    activeConversationIds[item.mode] = null
+    activeSource.value = null
+  }
+}
+
 function normalizeHistoryItem(item) {
   const messages = Array.isArray(item.messages) ? item.messages : []
   return {
@@ -974,6 +1064,7 @@ function selectRoot() {
   activeSource.value = null
   cancelMoveFile()
   cancelEditFolder()
+  cancelFileNameEdit()
 }
 
 function openEditFolder(folder) {
@@ -1040,6 +1131,25 @@ function collectFolderIds(folderId) {
   return ids
 }
 
+function hasFolderChildren(folderId) {
+  return folders.value.some((folder) => (folder.parentId ?? null) === folderId)
+}
+
+function toggleRootFolder() {
+  rootFolderCollapsed.value = !rootFolderCollapsed.value
+}
+
+function toggleFolderCollapse(folder) {
+  if (!folder || !hasFolderChildren(folder.id)) return
+  const nextCollapsed = new Set(collapsedFolderIds.value)
+  if (nextCollapsed.has(folder.id)) {
+    nextCollapsed.delete(folder.id)
+  } else {
+    nextCollapsed.add(folder.id)
+  }
+  collapsedFolderIds.value = nextCollapsed
+}
+
 function folderOptionLabel(folder) {
   return `${'　'.repeat(Math.max(0, folder.depth - 1))}${folder.name}`
 }
@@ -1084,10 +1194,19 @@ async function selectFolder(folder) {
   activeSource.value = null
   cancelMoveFile()
   cancelEditFolder()
+  cancelFileNameEdit()
 }
 
 function selectFile(file) {
+  cancelFileNameEdit()
   activeFile.value = { ...file }
+  nextTick(() => setEditorContent(activeFile.value.extractedText, 0))
+}
+
+function openFileInEditor(file) {
+  cancelFileNameEdit()
+  activeFile.value = { ...file }
+  activePage.value = 'editor'
   nextTick(() => setEditorContent(activeFile.value.extractedText, 0))
 }
 
@@ -1338,6 +1457,7 @@ async function saveFileText() {
   syncEditorContent()
   await run(async () => {
     const saved = await fileApi.update(activeFile.value.id, {
+      originalName: activeFile.value.originalName,
       extractedText: activeFile.value.extractedText,
       tag: activeFile.value.tag
     })
@@ -1356,6 +1476,7 @@ async function toggleKnowledge(file) {
   await run(async () => {
     const saved = !file.knowledgeEnabled && activeFile.value?.id === file.id
       ? await fileApi.update(activeFile.value.id, {
+          originalName: activeFile.value.originalName,
           extractedText: activeFile.value.extractedText,
           tag: activeFile.value.tag
         })
@@ -1461,6 +1582,58 @@ function displayFileName(file) {
   return name.replace(/\.[^.\\/\s]+$/u, '')
 }
 
+function originalFileExtension(file) {
+  const name = file?.originalName || file?.fileName || ''
+  const match = name.match(/(\.[^.\\/\s]+)$/u)
+  return match?.[1] || ''
+}
+
+function fileNameWithPreservedExtension(file, displayName) {
+  const trimmed = displayName.trim()
+  if (!trimmed) return file?.originalName || ''
+  if (/\.[^.\\/\s]+$/u.test(trimmed)) return trimmed
+  return `${trimmed}${originalFileExtension(file)}`
+}
+
+function startFileNameEdit() {
+  if (!activeFile.value) return
+  editingFileName.value = true
+  editingFileNameValue.value = displayFileName(activeFile.value)
+  nextTick(() => {
+    fileNameInput.value?.focus()
+    fileNameInput.value?.select()
+  })
+}
+
+function cancelFileNameEdit() {
+  editingFileName.value = false
+  editingFileNameValue.value = ''
+}
+
+async function saveFileName() {
+  if (!activeFile.value || !editingFileName.value || savingFileName.value) return
+  const originalName = fileNameWithPreservedExtension(activeFile.value, editingFileNameValue.value)
+  if (!originalName || originalName === activeFile.value.originalName) {
+    cancelFileNameEdit()
+    return
+  }
+  syncEditorContent()
+  savingFileName.value = true
+  await run(async () => {
+    const saved = await fileApi.update(activeFile.value.id, {
+      originalName,
+      extractedText: activeFile.value.extractedText,
+      tag: activeFile.value.tag
+    })
+    files.value = files.value.map((file) => (file.id === saved.id ? saved : file))
+    activeFile.value = { ...saved }
+    cancelFileNameEdit()
+    await nextTick()
+    setEditorContent(activeFile.value.extractedText, activeFilePageIndex.value)
+  })
+  savingFileName.value = false
+}
+
 async function openSourceFile(source) {
   if (!source) return
   await run(async () => {
@@ -1473,8 +1646,15 @@ async function openSourceFile(source) {
     activeFile.value = { ...file }
     activePage.value = 'editor'
     activeSource.value = null
+    cancelFileNameEdit()
     await nextTick()
     setEditorContent(activeFile.value.extractedText, Math.max(0, (source.pageNumber || 1) - 1))
+    const excerptPageIndex = findExcerptPageIndex(source.excerpt)
+    if (excerptPageIndex >= 0 && excerptPageIndex !== activeFilePageIndex.value) {
+      activeFilePageIndex.value = excerptPageIndex
+      setEditorPage(excerptPageIndex)
+    }
+    await nextTick()
     focusExcerpt(source.excerpt)
   })
 }
@@ -1489,32 +1669,72 @@ function focusExcerpt(excerpt) {
     return
   }
   editor.focus()
-  const range = document.createRange()
   const selection = window.getSelection()
-  const textNode = firstTextNodeContaining(editor, text.slice(match.start, match.end))
-  if (textNode && selection) {
-    const nodeIndex = textNode.textContent.indexOf(text.slice(match.start, match.end))
-    range.setStart(textNode, Math.max(0, nodeIndex))
-    range.setEnd(textNode, Math.max(0, nodeIndex) + text.slice(match.start, match.end).length)
+  const rangeInfo = rangeFromTextOffsets(editor, match.start, match.end)
+  if (rangeInfo && selection) {
     selection.removeAllRanges()
-    selection.addRange(range)
+    selection.addRange(rangeInfo.range)
+    scrollEditorSelectionIntoView(editor, rangeInfo.targetElement)
   }
 }
 
-function firstTextNodeContaining(root, needle) {
+function scrollEditorSelectionIntoView(editor, targetElement) {
+  const editorRect = editor.getBoundingClientRect()
+  const targetRect = targetElement.getBoundingClientRect()
+  const offset = targetRect.top - editorRect.top + editor.scrollTop
+  editor.scrollTop = Math.max(0, offset - editor.clientHeight / 2 + targetRect.height / 2)
+}
+
+function findExcerptPageIndex(excerpt) {
+  if (!excerpt) return -1
+  for (let index = 0; index < activeFilePages.value.length; index += 1) {
+    const pageText = editorPagePlainText(activeFilePages.value[index])
+    if (findExcerptRange(pageText, excerpt)) {
+      return index
+    }
+  }
+  return -1
+}
+
+function editorPagePlainText(pageHtml = '') {
+  const template = document.createElement('template')
+  template.innerHTML = renderEditorHtml(pageHtml)
+  return template.content.textContent || ''
+}
+
+function rangeFromTextOffsets(root, startOffset, endOffset) {
+  const range = document.createRange()
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  let cursor = 0
+  let startNode = null
+  let startNodeOffset = 0
+  let endNode = null
+  let endNodeOffset = 0
   let node = walker.nextNode()
   while (node) {
-    if (node.textContent.includes(needle)) {
-      return node
+    const textLength = node.textContent.length
+    const nodeStart = cursor
+    const nodeEnd = cursor + textLength
+    if (!startNode && startOffset >= nodeStart && startOffset <= nodeEnd) {
+      startNode = node
+      startNodeOffset = Math.max(0, startOffset - nodeStart)
     }
+    if (startNode && endOffset >= nodeStart && endOffset <= nodeEnd) {
+      endNode = node
+      endNodeOffset = Math.max(0, endOffset - nodeStart)
+      break
+    }
+    cursor = nodeEnd
     node = walker.nextNode()
   }
-  return null
+  if (!startNode || !endNode) return null
+  range.setStart(startNode, startNodeOffset)
+  range.setEnd(endNode, endNodeOffset)
+  return { range, targetElement: startNode.parentElement || root }
 }
 
 function findExcerptRange(text, excerpt) {
-  const cleanedExcerpt = excerpt.replace(/^\.\.\./, '').replace(/\.\.\.$/, '').trim()
+  const cleanedExcerpt = excerpt.replace(/^(?:\.{3}|…)+/, '').replace(/(?:\.{3}|…)+$/, '').trim()
   const candidates = [
     cleanedExcerpt,
     ...cleanedExcerpt.split(/[。！？；;.!?]/).map((part) => part.trim()).filter((part) => part.length >= 12)
@@ -1555,10 +1775,33 @@ function findNormalizedRange(text, needleText) {
   }
 
   const normalizedIndex = normalized.indexOf(needle)
-  if (normalizedIndex < 0) return null
+  if (normalizedIndex < 0) return findLooseNormalizedRange(text, needleText)
   const start = indexMap[normalizedIndex]
   const end = indexMap[Math.min(normalizedIndex + needle.length - 1, indexMap.length - 1)] + 1
   return { start, end }
+}
+
+function findLooseNormalizedRange(text, needleText) {
+  const normalizeLoose = (value) => {
+    let normalizedText = ''
+    const normalizedIndexMap = []
+    for (let index = 0; index < value.length; index += 1) {
+      const character = value[index]
+      if (/[\s.,，。:：;；!?！？、()[\]（）【】"'“”‘’·\-—→<>《》]/u.test(character)) continue
+      normalizedText += character.toLowerCase()
+      normalizedIndexMap.push(index)
+    }
+    return { normalizedText, normalizedIndexMap }
+  }
+  const haystack = normalizeLoose(text)
+  const needle = normalizeLoose(needleText).normalizedText
+  if (!needle) return null
+  const index = haystack.normalizedText.indexOf(needle)
+  if (index < 0) return null
+  return {
+    start: haystack.normalizedIndexMap[index],
+    end: haystack.normalizedIndexMap[Math.min(index + needle.length - 1, haystack.normalizedIndexMap.length - 1)] + 1
+  }
 }
 
 function clearChatMessages() {
@@ -1573,6 +1816,73 @@ function loadAiSettings() {
   } catch {
     return { ...defaultAiSettings }
   }
+}
+
+function loadAiSettingPresets() {
+  try {
+    const raw = localStorage.getItem(aiPresetStorageKey)
+    const presets = raw ? JSON.parse(raw) : []
+    return Array.isArray(presets)
+      ? presets.map(normalizeAiPreset).filter(Boolean).sort((a, b) => b.updatedAt - a.updatedAt)
+      : []
+  } catch {
+    return []
+  }
+}
+
+function normalizeAiPreset(preset) {
+  if (!preset?.name || !preset?.settings) return null
+  return {
+    id: preset.id || crypto.randomUUID(),
+    name: String(preset.name).trim().slice(0, 60),
+    settings: normalizeAiSettings(preset.settings),
+    updatedAt: Number(preset.updatedAt || Date.now())
+  }
+}
+
+function persistAiSettingPresets() {
+  localStorage.setItem(aiPresetStorageKey, JSON.stringify(aiSettingPresets.value))
+}
+
+function currentAiSettingsSnapshot() {
+  return normalizeAiSettings({ ...aiSettings })
+}
+
+function saveAiPreset() {
+  const name = aiPresetName.value.trim()
+  if (!name) return
+  const now = Date.now()
+  const existing = aiSettingPresets.value.find((preset) => preset.name === name)
+  const saved = {
+    id: existing?.id || crypto.randomUUID(),
+    name,
+    settings: currentAiSettingsSnapshot(),
+    updatedAt: now
+  }
+  aiSettingPresets.value = [saved, ...aiSettingPresets.value.filter((preset) => preset.id !== saved.id)]
+  selectedAiPresetId.value = saved.id
+  aiPresetName.value = name
+  persistAiSettingPresets()
+}
+
+function applyAiPreset() {
+  const preset = aiSettingPresets.value.find((item) => item.id === selectedAiPresetId.value)
+  if (!preset) return
+  Object.assign(aiSettings, normalizeAiSettings(preset.settings))
+  aiPresetName.value = preset.name
+}
+
+function syncSelectedAiPresetName() {
+  const preset = aiSettingPresets.value.find((item) => item.id === selectedAiPresetId.value)
+  aiPresetName.value = preset?.name || ''
+}
+
+function deleteAiPreset() {
+  if (!selectedAiPresetId.value) return
+  aiSettingPresets.value = aiSettingPresets.value.filter((preset) => preset.id !== selectedAiPresetId.value)
+  selectedAiPresetId.value = ''
+  aiPresetName.value = ''
+  persistAiSettingPresets()
 }
 
 async function loadRemoteAiSettings() {
@@ -1601,10 +1911,13 @@ function resetAiSettings() {
 }
 
 function normalizeAiSettings(settings) {
+  const chatModel = settings.chatModel === 'deepseek-chat'
+    ? 'deepseek-v4-flash'
+    : settings.chatModel || settings.model || defaultAiSettings.chatModel
   return {
     ...defaultAiSettings,
     ...settings,
-    chatModel: settings.chatModel || settings.model || defaultAiSettings.chatModel,
+    chatModel,
     chatEndpoint: settings.chatEndpoint || settings.endpoint || defaultAiSettings.chatEndpoint,
     chatApiKey: settings.chatApiKey || settings.apiKey || defaultAiSettings.chatApiKey,
     embeddingDimensions: Number(settings.embeddingDimensions || defaultAiSettings.embeddingDimensions)

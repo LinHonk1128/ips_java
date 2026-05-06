@@ -19,7 +19,7 @@ public class FileDtos {
     ) {
     }
 
-    public record UpdateFileTextRequest(@NotBlank String extractedText, @NotNull FileTag tag) {
+    public record UpdateFileTextRequest(String originalName, @NotBlank String extractedText, @NotNull FileTag tag) {
     }
 
     public record UpdateKnowledgeStatusRequest(@NotNull Boolean knowledgeEnabled) {

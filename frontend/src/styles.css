@@ -352,10 +352,11 @@ textarea:focus {
 .folder-item {
   min-height: 42px;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-columns: 22px minmax(0, 1fr) 16px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 8px 10px 8px calc(10px + var(--folder-indent, 0px));
+  outline: none;
 }
 
 .folder-item span,
@@ -363,6 +364,30 @@ textarea:focus {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.folder-toggle {
+  color: var(--muted);
+  cursor: pointer;
+  transition: transform 0.16s ease;
+}
+
+.folder-toggle:focus {
+  outline: none;
+}
+
+.folder-toggle:focus-visible {
+  color: var(--primary-dark);
+}
+
+.folder-toggle.open {
+  transform: rotate(90deg);
+}
+
+.folder-toggle.spacer {
+  width: 16px;
+  height: 16px;
+  cursor: default;
 }
 
 .folder-item:hover,
@@ -627,7 +652,7 @@ textarea:focus {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr) auto;
   gap: 12px;
-  align-items: start;
+  align-items: center;
 }
 
 .ai-summary {
@@ -657,11 +682,16 @@ textarea:focus {
 
 .history-actions {
   position: relative;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.history-actions .secondary-btn.slim {
+  min-height: 40px;
 }
 
 .history-menu {
@@ -697,22 +727,38 @@ textarea:focus {
   box-shadow: var(--shadow);
 }
 
-.history-title {
+.history-row {
   width: 100%;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
   gap: 4px;
-  padding: 9px 10px;
+  padding: 4px;
   border: 1px solid transparent;
   border-radius: 6px;
+  background: transparent;
+}
+
+.history-title {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 0;
   background: transparent;
   color: var(--ink);
   text-align: left;
 }
 
-.history-title:hover,
-.history-title.active {
+.history-row:hover,
+.history-row.active {
   border-color: #a8d8d2;
   background: var(--primary-soft);
+}
+
+.history-delete {
+  width: 32px;
+  min-height: 32px;
 }
 
 .history-title strong,
@@ -749,6 +795,22 @@ textarea:focus {
   display: grid;
   gap: 16px;
   max-width: 860px;
+}
+
+.settings-presets {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto minmax(180px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.settings-presets .icon-btn.mini {
+  width: 40px;
+  min-height: 40px;
 }
 
 .settings-grid {
@@ -1087,6 +1149,14 @@ textarea:focus {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: text;
+}
+
+.file-name-edit {
+  min-width: 0;
+  width: 100%;
+  height: 40px;
+  font-weight: 800;
 }
 
 .editor-head select {
@@ -1305,6 +1375,7 @@ textarea:focus {
   .page-toolbar,
   .file-row,
   .file-move-panel,
+  .settings-presets,
   .settings-grid,
   .upload-strip,
   .question-box {
