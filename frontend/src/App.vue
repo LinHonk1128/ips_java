@@ -518,6 +518,440 @@
           </div>
         </section>
 
+        <section v-else-if="activePage === 'mistakes'" class="page-panel mistakes-page">
+          <div v-if="!mistakeModule" class="mistake-module-landing">
+            <div class="mistake-module-menu">
+              <button
+                class="mistake-module-card"
+                :class="{ active: subjectTagCreatorOpen }"
+                type="button"
+                @click="subjectTagCreatorOpen = !subjectTagCreatorOpen"
+              >
+                <Tag :size="34" />
+                <strong>新增标签</strong>
+                <span>创建科目标签和未掌握状态，用于筛选错题和复盘归因。</span>
+              </button>
+              <button class="mistake-module-card" type="button" @click="openMistakeModule('upload')">
+                <Upload :size="34" />
+                <strong>上传错题</strong>
+                <span>录入题目、识别 PDF / 图片，并保存文字或图片解析。</span>
+              </button>
+              <button class="mistake-module-card" type="button" @click="openMistakeModule('practice')">
+                <BookOpenCheck :size="34" />
+                <strong>刷错题</strong>
+                <span>从未掌握错题中随机抽题，可开启倒计时练习。</span>
+              </button>
+              <button class="mistake-module-card" type="button" @click="openMistakeModule('browse')">
+                <Eye :size="34" />
+                <strong>浏览错题</strong>
+                <span>查看、修改题目和解析，隐藏答案进行自测。</span>
+              </button>
+            </div>
+            <div v-if="subjectTagCreatorOpen" class="mistake-management-panel">
+              <div class="mistake-management-group">
+                <strong>科目标签</strong>
+                <form class="status-create" @submit.prevent="createSubjectTag">
+                  <input v-model="newMistakeSubjectTagName" maxlength="60" placeholder="新增科目标签，如：操作系统" />
+                  <button class="primary-btn compact" type="submit" :disabled="loading || !newMistakeSubjectTagName.trim()">新增</button>
+                </form>
+                <div class="status-list">
+                  <div v-for="tag in mistakeSubjectTags" :key="tag.id" class="status-row">
+                    <span>{{ tag.name }}</span>
+                    <button class="icon-btn mini danger" type="button" title="删除标签" @click="deleteSubjectTag(tag)">
+                      <Trash2 :size="14" />
+                    </button>
+                  </div>
+                  <div v-if="mistakeSubjectTags.length === 0" class="empty-note">创建标签后，可在上传、刷题和浏览时快速筛选错题。</div>
+                </div>
+              </div>
+              <div class="mistake-management-group">
+                <strong>未掌握状态</strong>
+                <form class="status-create" @submit.prevent="createMistakeStatus">
+                  <input v-model="newMistakeStatusName" maxlength="60" placeholder="新增未掌握状态，如：算错了" />
+                  <button class="primary-btn compact" type="submit" :disabled="loading || !newMistakeStatusName.trim()">新增</button>
+                </form>
+                <div class="status-list">
+                  <div v-for="status in mistakeStatuses.filter((item) => !item.mastered)" :key="status.id" class="status-row">
+                    <span>{{ status.name }}</span>
+                    <button class="icon-btn mini danger" type="button" title="删除状态" @click="deleteMistakeStatus(status)">
+                      <Trash2 :size="14" />
+                    </button>
+                  </div>
+                  <div v-if="mistakeStatuses.filter((item) => !item.mastered).length === 0" class="empty-note">可以把未掌握细分为“算错了”“概念混淆”等状态。</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="mistakeModule === 'upload'" class="mistake-grid">
+            <form class="mistake-form" @submit.prevent="saveMistake">
+              <div class="section-head split">
+                <div>
+                  <h3>{{ editingMistake ? '修改错题' : '上传错题' }}</h3>
+                  <p>题目可直接输入，也可保存图片或 PDF 附件；解析支持文本和图片附件。</p>
+                </div>
+                <div class="mistake-section-actions">
+                  <button v-if="editingMistake" class="secondary-btn slim" type="button" @click="resetMistakeForm">取消修改</button>
+                  <button class="secondary-btn slim" type="button" @click="backToMistakeMenu">返回</button>
+                </div>
+              </div>
+
+              <label>
+                题目
+                <textarea v-model="mistakeForm.questionText" class="mistake-textarea" placeholder="输入题目；需要识别 PDF / 图片时，可使用右侧识别工具复制文本" />
+              </label>
+              <label>
+                题目图片
+                <input ref="mistakeQuestionAttachmentFile" type="file" accept=".png,.jpg,.jpeg,.webp" multiple @change="onImageSelect('question')" />
+              </label>
+              <div class="image-attachment-grid">
+                <article v-for="item in questionImageItems" :key="item.id" class="image-attachment-item">
+                  <img :src="item.previewUrl" alt="题目图片缩略图" @dblclick="enlargeAttachment(item)" />
+                  <input v-model="item.displayName" maxlength="180" placeholder="图片名称" />
+                  <button class="icon-btn mini danger" type="button" title="移除图片" @click="removeImageItem('question', item.id)">
+                    <Trash2 :size="14" />
+                  </button>
+                </article>
+                <div v-if="questionImageItems.length === 0" class="empty-note">可一次选择多张图片，上传后会在这里显示缩略图，双击可放大。</div>
+              </div>
+              <label>
+                题目解析
+                <textarea v-model="mistakeForm.solutionText" class="mistake-textarea" placeholder="输入解析文字，也可以上传图片或文件作为解析附件" />
+              </label>
+              <label>
+                解析图片
+                <input ref="mistakeSolutionFile" type="file" accept=".png,.jpg,.jpeg,.webp" multiple @change="onImageSelect('solution')" />
+              </label>
+              <div class="image-attachment-grid">
+                <article v-for="item in solutionImageItems" :key="item.id" class="image-attachment-item">
+                  <img :src="item.previewUrl" alt="解析图片缩略图" @dblclick="enlargeAttachment(item)" />
+                  <input v-model="item.displayName" maxlength="180" placeholder="图片名称" />
+                  <button class="icon-btn mini danger" type="button" title="移除图片" @click="removeImageItem('solution', item.id)">
+                    <Trash2 :size="14" />
+                  </button>
+                </article>
+                <div v-if="solutionImageItems.length === 0" class="empty-note">解析也支持多张图片，双击缩略图可放大查看。</div>
+              </div>
+
+              <div class="mastery-radio" aria-label="错题状态">
+                <button
+                  class="status-pill"
+                  :class="{ active: mistakeForm.statusKey === 'mastered' }"
+                  type="button"
+                  @click="mistakeForm.statusKey = 'mastered'"
+                >
+                  完全掌握
+                </button>
+                <button
+                  class="status-pill"
+                  :class="{ active: mistakeForm.statusKey !== 'mastered' }"
+                  type="button"
+                  @click="setUnmasteredStatus"
+                >
+                  未掌握
+                </button>
+              </div>
+
+              <div v-if="mistakeForm.statusKey !== 'mastered'" class="mistake-status-picker" aria-label="未掌握原因">
+                <button
+                  v-for="option in unmasteredStatusOptions"
+                  :key="option.key"
+                  class="status-pill"
+                  :class="{ active: mistakeForm.statusKey === option.key }"
+                  type="button"
+                  @click="mistakeForm.statusKey = option.key"
+                >
+                  {{ option.label }}
+                </button>
+                <span v-if="unmasteredStatusOptions.length === 0" class="empty-inline">请先在右侧新增未掌握原因。</span>
+              </div>
+
+              <div class="mistake-label-block">
+                <strong>科目</strong>
+                <div class="mistake-status-picker" aria-label="科目标签">
+                  <button
+                    v-for="tag in mistakeSubjectTags"
+                    :key="tag.id"
+                    class="status-pill"
+                    :class="{ active: mistakeForm.subjectTagIds.includes(tag.id) }"
+                    type="button"
+                    @click="toggleIdInArray(mistakeForm.subjectTagIds, tag.id)"
+                  >
+                    {{ tag.name }}
+                  </button>
+                  <span v-if="mistakeSubjectTags.length === 0" class="empty-inline">暂无科目标签，请返回入口新增标签。</span>
+                </div>
+              </div>
+
+              <button class="primary-btn compact" type="submit" :disabled="loading">
+                <Save :size="17" />
+                {{ editingMistake ? '保存修改' : '加入错题集' }}
+              </button>
+            </form>
+
+            <aside class="mistake-side">
+              <form class="status-create" @submit.prevent="createMistakeStatus">
+                <input v-model="newMistakeStatusName" maxlength="60" placeholder="新增未掌握状态，如：算错了" />
+                <button class="primary-btn compact" type="submit" :disabled="loading || !newMistakeStatusName.trim()">新增</button>
+              </form>
+              <div class="status-list">
+                <div v-for="status in mistakeStatuses.filter((item) => !item.mastered)" :key="status.id" class="status-row">
+                  <span>{{ status.name }}</span>
+                  <button class="icon-btn mini danger" type="button" title="删除状态" @click="deleteMistakeStatus(status)">
+                    <Trash2 :size="14" />
+                  </button>
+                </div>
+                <div v-if="mistakeStatuses.filter((item) => !item.mastered).length === 0" class="empty-note">可以把未掌握细分为“算错了”“概念混淆”等状态。</div>
+              </div>
+              <div class="recognition-tool">
+                <div class="section-head">
+                  <h3>PDF / 图片识别</h3>
+                  <p>识别结果只作为临时文本工具，可复制后粘贴到题目或解析。</p>
+                </div>
+                <input ref="recognitionFile" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" />
+                <button class="secondary-btn slim" type="button" :disabled="loading || recognitionLoading" @click="recognizeMistakeFile">
+                  <ScanText :size="16" />
+                  {{ recognitionLoading ? '识别中' : '开始识别' }}
+                </button>
+                <textarea v-model="recognitionText" class="recognition-output" readonly placeholder="识别出的文本会显示在这里" />
+                <button class="secondary-btn slim" type="button" :disabled="!recognitionText" @click="copyRecognitionText">
+                  <ClipboardCopy :size="16" />
+                  复制文本
+                </button>
+              </div>
+            </aside>
+          </div>
+
+          <div v-if="mistakeModule === 'practice'" class="practice-panel">
+            <div class="section-head split">
+              <div>
+                <h3>刷错题</h3>
+                <p>题目从未掌握错题中随机抽取，结束前只显示题目和切换按钮。</p>
+              </div>
+              <div class="mistake-section-actions">
+                <div v-if="practiceStarted && practiceForm.timed && !practiceFinished" class="practice-clock">
+                  <Timer :size="17" />
+                  {{ practiceClock }}
+                </div>
+                <button class="secondary-btn slim" type="button" @click="backToMistakeMenu">返回</button>
+              </div>
+            </div>
+
+            <form v-if="!practiceStarted" class="practice-form" @submit.prevent="startPractice">
+              <label>
+                题数
+                <input v-model.number="practiceForm.count" type="number" min="1" max="100" />
+              </label>
+              <label class="check-row">
+                <input v-model="practiceForm.timed" type="checkbox" />
+                <span>开启倒计时</span>
+              </label>
+              <label v-if="practiceForm.timed">
+                分钟
+                <input v-model.number="practiceForm.minutes" type="number" min="1" max="240" />
+              </label>
+              <div class="practice-subject-filter">
+                <strong>科目筛选</strong>
+                <div class="mistake-status-picker">
+                  <button
+                    v-for="tag in mistakeSubjectTags"
+                    :key="tag.id"
+                    class="status-pill"
+                    :class="{ active: practiceForm.subjectTagIds.includes(tag.id) }"
+                    type="button"
+                    @click="toggleIdInArray(practiceForm.subjectTagIds, tag.id)"
+                  >
+                    {{ tag.name }}
+                  </button>
+                  <span v-if="mistakeSubjectTags.length === 0" class="empty-inline">暂无科目标签</span>
+                </div>
+              </div>
+              <button class="primary-btn compact" type="submit" :disabled="loading">
+                <BookOpenCheck :size="17" />
+                开始刷题
+              </button>
+            </form>
+
+            <div v-else-if="practiceCurrentQuestion" class="practice-board">
+              <div class="practice-head">
+                <strong>第 {{ practiceIndex + 1 }} / {{ practiceQuestions.length }} 题</strong>
+                <button class="secondary-btn slim" type="button" @click="finishPractice">结束并查看答案</button>
+              </div>
+              <article class="mistake-question">
+                <div v-if="practiceCurrentQuestion.questionText" v-html="renderRichText(practiceCurrentQuestion.questionText)"></div>
+                <div v-if="practiceCurrentQuestion.questionAttachments?.length" class="saved-image-strip">
+                  <figure
+                    v-for="attachment in practiceCurrentQuestion.questionAttachments"
+                    :key="attachment.id || attachment.displayName"
+                    @dblclick="enlargeSavedAttachment(attachment)"
+                  >
+                    <img v-if="attachment.id && attachmentPreviewUrls[attachment.id]" :src="attachmentPreviewUrls[attachment.id]" alt="题目图片" />
+                    <img v-else-if="!attachment.id && questionPreviewUrls[practiceCurrentQuestion.id]" :src="questionPreviewUrls[practiceCurrentQuestion.id]" alt="题目图片" />
+                    <figcaption>{{ attachment.displayName || attachment.originalName }}</figcaption>
+                  </figure>
+                </div>
+                <img v-if="questionPreviewUrls[practiceCurrentQuestion.id] && !practiceCurrentQuestion.questionAttachments?.length" :src="questionPreviewUrls[practiceCurrentQuestion.id]" alt="题目附件" />
+                <span v-else-if="practiceCurrentQuestion.hasQuestionFile && !practiceCurrentQuestion.questionAttachments?.length">
+                  <Image :size="15" />
+                  {{ practiceCurrentQuestion.questionOriginalName || '题目附件' }}
+                </span>
+              </article>
+              <div class="practice-actions">
+                <button class="secondary-btn slim" type="button" :disabled="practiceIndex === 0" @click="nextPracticeQuestion(-1)">上一题</button>
+                <button class="secondary-btn slim" type="button" :disabled="practiceIndex >= practiceQuestions.length - 1" @click="nextPracticeQuestion(1)">下一题</button>
+                <button class="secondary-btn slim" type="button" @click="closePractice">退出</button>
+              </div>
+              <div v-if="practiceFinished" class="practice-answer">
+                <strong>答案解析</strong>
+                <div v-if="practiceCurrentQuestion.solutionText" v-html="renderRichText(practiceCurrentQuestion.solutionText)"></div>
+                <div v-if="practiceCurrentQuestion.solutionAttachments?.length" class="saved-image-strip">
+                  <figure
+                    v-for="attachment in practiceCurrentQuestion.solutionAttachments"
+                    :key="attachment.id || attachment.displayName"
+                    @dblclick="enlargeSavedAttachment(attachment)"
+                  >
+                    <img v-if="attachment.id && attachmentPreviewUrls[attachment.id]" :src="attachmentPreviewUrls[attachment.id]" alt="解析图片" />
+                    <img v-else-if="!attachment.id && solutionPreviewUrls[practiceCurrentQuestion.id]" :src="solutionPreviewUrls[practiceCurrentQuestion.id]" alt="解析图片" />
+                    <figcaption>{{ attachment.displayName || attachment.originalName }}</figcaption>
+                  </figure>
+                </div>
+                <img v-if="solutionPreviewUrls[practiceCurrentQuestion.id] && !practiceCurrentQuestion.solutionAttachments?.length" :src="solutionPreviewUrls[practiceCurrentQuestion.id]" alt="解析图片" />
+                <span v-if="!practiceCurrentQuestion.solutionText && !practiceCurrentQuestion.hasSolutionFile">这道题还没有解析。</span>
+              </div>
+            </div>
+            <div v-else class="empty-note">暂无未掌握错题，先上传或把错题标记为未掌握。</div>
+          </div>
+
+          <div v-if="mistakeModule === 'browse'" class="mistake-browser">
+            <div class="section-head split">
+              <div>
+                <h3>浏览错题</h3>
+                <p>可修改题目、解析和状态，也可以隐藏解析进行自测。</p>
+              </div>
+              <div class="mistake-section-actions">
+                <button class="secondary-btn slim" type="button" @click="showBrowseSolution = !showBrowseSolution">
+                  <EyeOff v-if="showBrowseSolution" :size="16" />
+                  <Eye v-else :size="16" />
+                  {{ showBrowseSolution ? '隐藏解析' : '显示解析' }}
+                </button>
+                <button class="secondary-btn slim" type="button" @click="backToMistakeMenu">返回</button>
+              </div>
+            </div>
+
+            <div class="browser-filter-bar">
+              <strong>科目筛选</strong>
+              <div class="mistake-status-picker">
+                <button
+                  v-for="tag in mistakeSubjectTags"
+                  :key="tag.id"
+                  class="status-pill"
+                  :class="{ active: browseSubjectFilterIds.includes(tag.id) }"
+                  type="button"
+                  @click="toggleIdInArray(browseSubjectFilterIds, tag.id)"
+                >
+                  {{ tag.name }}
+                </button>
+                <button v-if="browseSubjectFilterIds.length" class="secondary-btn slim" type="button" @click="browseSubjectFilterIds = []">清空筛选</button>
+                <span v-if="mistakeSubjectTags.length === 0" class="empty-inline">暂无科目标签</span>
+              </div>
+            </div>
+
+            <div class="mistake-list">
+              <article
+                v-for="mistake in filteredMistakes"
+                :key="mistake.id"
+                class="mistake-card"
+                :class="{ selected: activeMistake?.id === mistake.id }"
+                @click="activeMistake = mistake"
+              >
+                <div class="mistake-card-head">
+                  <span class="status-pill compact" :class="{ mastered: mistake.mastered }">{{ mistake.statusName }}</span>
+                  <div v-if="mistake.subjectTags?.length" class="subject-tag-strip">
+                    <span v-for="tag in mistake.subjectTags" :key="tag.id">{{ tag.name }}</span>
+                  </div>
+                  <div class="mistake-card-actions">
+                    <button
+                      v-for="option in mistakeStatusOptions"
+                      :key="option.key"
+                      class="secondary-btn slim"
+                      type="button"
+                      @click.stop="setMistakeStatus(mistake, option)"
+                    >
+                      {{ option.label }}
+                    </button>
+                  </div>
+                </div>
+                <div class="mistake-question">
+                  <div v-if="mistake.questionText" v-html="renderRichText(mistake.questionText)"></div>
+                  <div v-if="mistake.questionAttachments?.length" class="saved-image-strip">
+                    <figure
+                      v-for="attachment in mistake.questionAttachments"
+                      :key="attachment.id || attachment.displayName"
+                      @dblclick="enlargeSavedAttachment(attachment)"
+                    >
+                      <img v-if="attachment.id && attachmentPreviewUrls[attachment.id]" :src="attachmentPreviewUrls[attachment.id]" alt="题目图片" />
+                      <img v-else-if="!attachment.id && questionPreviewUrls[mistake.id]" :src="questionPreviewUrls[mistake.id]" alt="题目图片" />
+                      <figcaption>{{ attachment.displayName || attachment.originalName }}</figcaption>
+                    </figure>
+                  </div>
+                  <img v-if="questionPreviewUrls[mistake.id] && !mistake.questionAttachments?.length" :src="questionPreviewUrls[mistake.id]" alt="题目附件" />
+                  <span v-else-if="mistake.hasQuestionFile && !mistake.questionAttachments?.length">
+                    <Image :size="15" />
+                    {{ mistake.questionOriginalName || '题目附件' }}
+                  </span>
+                </div>
+                <div v-if="showBrowseSolution" class="mistake-solution">
+                  <strong>解析</strong>
+                  <div v-if="mistake.solutionText" v-html="renderRichText(mistake.solutionText)"></div>
+                  <div v-if="mistake.solutionAttachments?.length" class="saved-image-strip">
+                    <figure
+                      v-for="attachment in mistake.solutionAttachments"
+                      :key="attachment.id || attachment.displayName"
+                      @dblclick="enlargeSavedAttachment(attachment)"
+                    >
+                      <img v-if="attachment.id && attachmentPreviewUrls[attachment.id]" :src="attachmentPreviewUrls[attachment.id]" alt="解析图片" />
+                      <img v-else-if="!attachment.id && solutionPreviewUrls[mistake.id]" :src="solutionPreviewUrls[mistake.id]" alt="解析图片" />
+                      <figcaption>{{ attachment.displayName || attachment.originalName }}</figcaption>
+                    </figure>
+                  </div>
+                  <img v-if="solutionPreviewUrls[mistake.id] && !mistake.solutionAttachments?.length" :src="solutionPreviewUrls[mistake.id]" alt="解析图片" />
+                  <span v-else-if="mistake.hasSolutionFile && !mistake.solutionAttachments?.length">
+                    <Image :size="15" />
+                    {{ mistake.solutionOriginalName || '解析附件' }}
+                  </span>
+                  <span v-if="!mistake.solutionText && !mistake.hasSolutionFile">暂无解析</span>
+                </div>
+                <div class="mistake-actions">
+                  <button class="secondary-btn slim" type="button" @click.stop="editMistake(mistake)">
+                    <Pencil :size="15" />
+                    修改
+                  </button>
+                  <button class="secondary-btn slim danger-text" type="button" @click.stop="deleteMistake(mistake)">
+                    <Trash2 :size="15" />
+                    删除
+                  </button>
+                </div>
+              </article>
+              <div v-if="mistakes.length === 0" class="empty-state">
+                <BookOpenCheck :size="30" />
+                <strong>还没有错题</strong>
+                <span>上传题目和解析后，就能按掌握状态刷题复习。</span>
+              </div>
+              <div v-else-if="filteredMistakes.length === 0" class="empty-note">当前科目筛选下没有错题。</div>
+            </div>
+          </div>
+
+          <div v-if="enlargedAttachment" class="image-lightbox" role="dialog" aria-label="图片预览" @click.self="enlargedAttachment = null">
+            <div class="image-lightbox-panel">
+              <div class="image-lightbox-head">
+                <strong>{{ enlargedAttachment.displayName || enlargedAttachment.file?.name || '图片预览' }}</strong>
+                <button class="icon-btn mini" type="button" title="关闭" @click="enlargedAttachment = null">×</button>
+              </div>
+              <img :src="enlargedAttachment.previewUrl || enlargedAttachment.url" alt="放大的附件图片" />
+            </div>
+          </div>
+        </section>
+
         <section v-else class="page-panel settings-page">
           <div class="settings-layout">
             <form class="settings-form" @submit.prevent="saveAiSettings">
@@ -668,13 +1102,18 @@
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import {
   Bold,
+  BookOpenCheck,
   Bot,
   ChevronRight,
+  ClipboardCopy,
   Clock,
+  Eye,
+  EyeOff,
   FileText,
   Folder,
   FolderOpen,
   FolderPlus,
+  Image,
   KeyRound,
   Library,
   LoaderCircle,
@@ -695,11 +1134,13 @@ import {
   Send,
   Settings,
   Table2,
+  Tag,
+  Timer,
   Trash2,
   Underline,
   Upload
 } from 'lucide-vue-next'
-import { aiSettingsApi, authApi, chatApi, clearSession, fileApi, folderApi, getSession, setSession } from './api/client'
+import { aiSettingsApi, authApi, chatApi, clearSession, fileApi, folderApi, getSession, getToken, mistakeApi, setSession } from './api/client'
 
 const session = ref(getSession())
 const authMode = ref('login')
@@ -735,6 +1176,41 @@ const fileNameInput = ref(null)
 const moveFileTargetId = ref('')
 const rootFolderCollapsed = ref(false)
 const collapsedFolderIds = ref(new Set())
+const mistakes = ref([])
+const mistakeStatuses = ref([])
+const mistakeSubjectTags = ref([])
+const activeMistake = ref(null)
+const editingMistake = ref(null)
+const mistakeQuestionAttachmentFile = ref(null)
+const mistakeSolutionFile = ref(null)
+const questionImageItems = ref([])
+const solutionImageItems = ref([])
+const enlargedAttachment = ref(null)
+const recognitionFile = ref(null)
+const recognitionText = ref('')
+const recognitionLoading = ref(false)
+const newMistakeStatusName = ref('')
+const newMistakeSubjectTagName = ref('')
+const subjectTagCreatorOpen = ref(false)
+const mistakeForm = reactive({
+  questionText: '',
+  solutionText: '',
+  statusKey: 'mastered',
+  subjectTagIds: []
+})
+const practiceForm = reactive({ count: 5, timed: false, minutes: 20, subjectTagIds: [] })
+const practiceQuestions = ref([])
+const practiceIndex = ref(0)
+const practiceStarted = ref(false)
+const practiceFinished = ref(false)
+const practiceRemainingSeconds = ref(0)
+const practiceTimerId = ref(null)
+const showBrowseSolution = ref(true)
+const browseSubjectFilterIds = ref([])
+const solutionPreviewUrls = ref({})
+const questionPreviewUrls = ref({})
+const attachmentPreviewUrls = ref({})
+const mistakeModule = ref('')
 const defaultAiSettings = {
   aiRole: '严谨的考研答疑老师',
   systemPrompt: '优先依据当前知识库回答；给出可追溯依据；如果资料不足，明确说明无法从知识库确认。',
@@ -760,6 +1236,7 @@ const navItems = [
   { key: 'library', label: '我的资料', icon: Library },
   { key: 'chat', label: '知识问答', icon: MessageSquare },
   { key: 'editor', label: '上传编辑', icon: ScanText },
+  { key: 'mistakes', label: '错题集', icon: BookOpenCheck },
   { key: 'settings', label: 'AI 设置', icon: Settings }
 ]
 
@@ -775,6 +1252,10 @@ const pageMeta = {
   editor: {
     title: '上传编辑',
     description: '上传文件、校正扫描文本，并保存为后续问答可检索的知识片段。'
+  },
+  mistakes: {
+    title: '错题集',
+    description: '上传错题、管理掌握状态，并从未掌握题目中随机刷题。'
   },
   settings: {
     title: 'AI 设置',
@@ -842,6 +1323,26 @@ const emptyFolderTitle = computed(() => (activeFolder.value ? '当前文件夹�
 const emptyFolderDescription = computed(() =>
   activeFolder.value ? '可以继续上传文件，或在未达到 2 层时创建子文件夹。' : '文件夹会作为上传、编辑和知识问答的工作范围。'
 )
+const mistakeStatusOptions = computed(() => [
+  { key: 'mastered', label: '完全掌握', mastered: true, statusId: null },
+  ...mistakeStatuses.value
+    .filter((status) => !status.mastered)
+    .map((status) => ({ key: `status:${status.id}`, label: status.name, mastered: false, statusId: status.id }))
+])
+const unmasteredStatusOptions = computed(() => mistakeStatusOptions.value.filter((option) => !option.mastered))
+const filteredMistakes = computed(() => {
+  if (browseSubjectFilterIds.value.length === 0) return mistakes.value
+  return mistakes.value.filter((mistake) => {
+    const ids = new Set((mistake.subjectTags || []).map((tag) => tag.id))
+    return browseSubjectFilterIds.value.some((id) => ids.has(id))
+  })
+})
+const practiceCurrentQuestion = computed(() => practiceQuestions.value[practiceIndex.value] || null)
+const practiceClock = computed(() => {
+  const minutes = Math.floor(practiceRemainingSeconds.value / 60)
+  const seconds = practiceRemainingSeconds.value % 60
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+})
 
 function folderChatHistoryKey(folderId) {
   const userKey = session.value?.userId || session.value?.username || 'guest'
@@ -1009,6 +1510,7 @@ onMounted(() => {
   if (session.value) {
     loadFolders()
     loadRemoteAiSettings()
+    loadMistakeData()
   }
 })
 
@@ -1020,7 +1522,356 @@ async function submitAuth() {
     session.value = result
     await loadFolders()
     await loadRemoteAiSettings()
+    await loadMistakeData()
   })
+}
+
+async function loadMistakeData() {
+  await run(async () => {
+    const [statuses, subjectTags, mistakeList] = await Promise.all([
+      mistakeApi.listStatuses(),
+      mistakeApi.listSubjectTags(),
+      mistakeApi.list()
+    ])
+    mistakeStatuses.value = statuses
+    mistakeSubjectTags.value = subjectTags
+    mistakes.value = mistakeList
+    activeMistake.value = mistakeList[0] || null
+    await refreshAttachmentPreviews(mistakeList)
+  })
+}
+
+function selectedMistakeStatus() {
+  if (mistakeForm.statusKey === 'mastered') {
+    return { mastered: true, statusId: null }
+  }
+  const option = mistakeStatusOptions.value.find((status) => status.key === mistakeForm.statusKey)
+  return option || { mastered: false, statusId: null }
+}
+
+function resetMistakeForm() {
+  editingMistake.value = null
+  mistakeForm.questionText = ''
+  mistakeForm.solutionText = ''
+  mistakeForm.statusKey = 'mastered'
+  mistakeForm.subjectTagIds = []
+  if (mistakeQuestionAttachmentFile.value) mistakeQuestionAttachmentFile.value.value = ''
+  if (mistakeSolutionFile.value) mistakeSolutionFile.value.value = ''
+  clearImageItems('question')
+  clearImageItems('solution')
+}
+
+function editMistake(mistake) {
+  editingMistake.value = mistake
+  mistakeForm.questionText = mistake.questionText || ''
+  mistakeForm.solutionText = mistake.solutionText || ''
+  mistakeForm.statusKey = mistake.mastered ? 'mastered' : mistake.statusId ? `status:${mistake.statusId}` : 'mastered'
+  mistakeForm.subjectTagIds = (mistake.subjectTags || []).map((tag) => tag.id)
+  activeMistake.value = mistake
+  mistakeModule.value = 'upload'
+}
+
+function openMistakeModule(module) {
+  mistakeModule.value = module
+}
+
+function backToMistakeMenu() {
+  if (mistakeModule.value === 'practice') {
+    closePractice()
+  }
+  mistakeModule.value = ''
+}
+
+async function saveMistake() {
+  const status = selectedMistakeStatus()
+  const payload = {
+    questionText: mistakeForm.questionText,
+    questionImageFiles: questionImageItems.value.map((item) => item.file),
+    questionImageNames: questionImageItems.value.map((item) => item.displayName),
+    solutionText: mistakeForm.solutionText,
+    solutionImageFiles: solutionImageItems.value.map((item) => item.file),
+    solutionImageNames: solutionImageItems.value.map((item) => item.displayName),
+    mastered: status.mastered,
+    statusId: status.statusId,
+    subjectTagIds: mistakeForm.subjectTagIds
+  }
+  await run(async () => {
+    const saved = editingMistake.value
+      ? await mistakeApi.update(editingMistake.value.id, payload)
+      : await mistakeApi.create(payload)
+    mistakes.value = [saved, ...mistakes.value.filter((item) => item.id !== saved.id)]
+    activeMistake.value = saved
+    resetMistakeForm()
+    await refreshAttachmentPreviews(mistakes.value)
+  })
+}
+
+function setUnmasteredStatus() {
+  if (mistakeForm.statusKey === 'mastered') {
+    mistakeForm.statusKey = unmasteredStatusOptions.value[0]?.key || 'unmastered'
+  }
+}
+
+function onImageSelect(kind) {
+  const input = kind === 'question' ? mistakeQuestionAttachmentFile.value : mistakeSolutionFile.value
+  const target = kind === 'question' ? questionImageItems : solutionImageItems
+  const selected = Array.from(input?.files || [])
+  const nextItems = selected.map((file) => ({
+    id: crypto.randomUUID(),
+    file,
+    displayName: displayNameWithoutExtension(file.name),
+    previewUrl: URL.createObjectURL(file)
+  }))
+  target.value = [...target.value, ...nextItems]
+  if (input) {
+    input.value = ''
+  }
+}
+
+function removeImageItem(kind, id) {
+  const target = kind === 'question' ? questionImageItems : solutionImageItems
+  const item = target.value.find((entry) => entry.id === id)
+  if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl)
+  target.value = target.value.filter((entry) => entry.id !== id)
+}
+
+function clearImageItems(kind) {
+  const target = kind === 'question' ? questionImageItems : solutionImageItems
+  target.value.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+  target.value = []
+}
+
+function enlargeAttachment(item) {
+  enlargedAttachment.value = item
+}
+
+function enlargeSavedAttachment(attachment) {
+  const url = attachment.id ? attachmentPreviewUrls.value[attachment.id] : null
+  if (!url) return
+  enlargedAttachment.value = {
+    ...attachment,
+    url
+  }
+}
+
+function displayNameWithoutExtension(name = '') {
+  return name.replace(/\.[^.\\/\s]+$/u, '') || name || '图片'
+}
+
+async function createMistakeStatus() {
+  const name = newMistakeStatusName.value.trim()
+  if (!name) return
+  await run(async () => {
+    const status = await mistakeApi.createStatus({ name })
+    mistakeStatuses.value.push(status)
+    mistakeForm.statusKey = `status:${status.id}`
+    newMistakeStatusName.value = ''
+  })
+}
+
+async function createSubjectTag() {
+  const name = newMistakeSubjectTagName.value.trim()
+  if (!name) return
+  await run(async () => {
+    const tag = await mistakeApi.createSubjectTag({ name })
+    mistakeSubjectTags.value.push(tag)
+    if (mistakeModule.value === 'upload' && !mistakeForm.subjectTagIds.includes(tag.id)) {
+      mistakeForm.subjectTagIds.push(tag.id)
+    }
+    newMistakeSubjectTagName.value = ''
+    subjectTagCreatorOpen.value = false
+  })
+}
+
+async function deleteSubjectTag(tag) {
+  if (!tag?.id || !window.confirm(`确定删除“${tag.name}”这个科目标签吗？如果已有错题使用它，需要先更换标签或删除对应错题。`)) return
+  await run(async () => {
+    await mistakeApi.deleteSubjectTag(tag.id)
+    mistakeSubjectTags.value = mistakeSubjectTags.value.filter((item) => item.id !== tag.id)
+    removeIdFromArray(mistakeForm.subjectTagIds, tag.id)
+    removeIdFromArray(practiceForm.subjectTagIds, tag.id)
+    removeIdFromArray(browseSubjectFilterIds.value, tag.id)
+  })
+}
+
+function toggleIdInArray(array, id) {
+  const index = array.indexOf(id)
+  if (index >= 0) {
+    array.splice(index, 1)
+  } else {
+    array.push(id)
+  }
+}
+
+function removeIdFromArray(array, id) {
+  const index = array.indexOf(id)
+  if (index >= 0) {
+    array.splice(index, 1)
+  }
+}
+
+async function recognizeMistakeFile() {
+  const selected = recognitionFile.value?.files?.[0]
+  if (!selected || recognitionLoading.value) return
+  recognitionLoading.value = true
+  await run(async () => {
+    const result = await mistakeApi.recognize(selected)
+    recognitionText.value = result.text || ''
+  })
+  recognitionLoading.value = false
+}
+
+async function copyRecognitionText() {
+  if (!recognitionText.value) return
+  await navigator.clipboard.writeText(recognitionText.value)
+}
+
+async function deleteMistakeStatus(status) {
+  if (!status?.id || !window.confirm(`确定删除“${status.name}”这个未掌握状态吗？`)) return
+  await run(async () => {
+    await mistakeApi.deleteStatus(status.id)
+    mistakeStatuses.value = mistakeStatuses.value.filter((item) => item.id !== status.id)
+    if (mistakeForm.statusKey === `status:${status.id}`) {
+      mistakeForm.statusKey = 'mastered'
+    }
+  })
+}
+
+async function setMistakeStatus(mistake, option) {
+  await run(async () => {
+    const saved = await mistakeApi.updateMistakeStatus(mistake.id, {
+      mastered: option.mastered,
+      statusId: option.statusId
+    })
+    mistakes.value = mistakes.value.map((item) => (item.id === saved.id ? saved : item))
+    if (activeMistake.value?.id === saved.id) activeMistake.value = saved
+    if (editingMistake.value?.id === saved.id) editMistake(saved)
+  })
+}
+
+async function deleteMistake(mistake) {
+  if (!mistake || !window.confirm('确定删除这道错题吗？')) return
+  await run(async () => {
+    await mistakeApi.delete(mistake.id)
+    mistakes.value = mistakes.value.filter((item) => item.id !== mistake.id)
+    activeMistake.value = mistakes.value[0] || null
+    if (editingMistake.value?.id === mistake.id) resetMistakeForm()
+    revokeQuestionPreview(mistake.id)
+    revokeSolutionPreview(mistake.id)
+  })
+}
+
+async function startPractice() {
+  await run(async () => {
+    practiceQuestions.value = await mistakeApi.practice(practiceForm.count, practiceForm.subjectTagIds)
+    practiceIndex.value = 0
+    practiceStarted.value = practiceQuestions.value.length > 0
+    practiceFinished.value = false
+    stopPracticeTimer()
+    if (practiceForm.timed && practiceStarted.value) {
+      practiceRemainingSeconds.value = Math.max(1, Number(practiceForm.minutes || 1)) * 60
+      practiceTimerId.value = window.setInterval(() => {
+        practiceRemainingSeconds.value -= 1
+        if (practiceRemainingSeconds.value <= 0) {
+          finishPractice()
+        }
+      }, 1000)
+    }
+  })
+}
+
+function finishPractice() {
+  practiceFinished.value = true
+  stopPracticeTimer()
+}
+
+function stopPracticeTimer() {
+  if (practiceTimerId.value) {
+    window.clearInterval(practiceTimerId.value)
+    practiceTimerId.value = null
+  }
+}
+
+function closePractice() {
+  stopPracticeTimer()
+  practiceStarted.value = false
+  practiceFinished.value = false
+  practiceQuestions.value = []
+  practiceIndex.value = 0
+  practiceRemainingSeconds.value = 0
+}
+
+function nextPracticeQuestion(delta) {
+  if (!practiceQuestions.value.length) return
+  practiceIndex.value = Math.min(practiceQuestions.value.length - 1, Math.max(0, practiceIndex.value + delta))
+}
+
+async function refreshAttachmentPreviews(items) {
+  for (const item of items) {
+    for (const attachment of [...(item.questionAttachments || []), ...(item.solutionAttachments || [])]) {
+      if (attachment.id && attachment.image && !attachmentPreviewUrls.value[attachment.id]) {
+        await loadSavedAttachmentPreview(attachment)
+      }
+    }
+    if (item.hasQuestionFile && (item.questionContentType || '').startsWith('image/') && !questionPreviewUrls.value[item.id]) {
+      await loadAttachmentPreview(item, 'question')
+    }
+    if (item.hasSolutionFile && (item.solutionContentType || '').startsWith('image/') && !solutionPreviewUrls.value[item.id]) {
+      await loadAttachmentPreview(item, 'solution')
+    }
+  }
+}
+
+async function loadSavedAttachmentPreview(attachment) {
+  const response = await fetch(mistakeApi.attachmentUrl(attachment.id), {
+    headers: { Authorization: `Bearer ${getToken()}` }
+  })
+  if (!response.ok) return
+  const blob = await response.blob()
+  attachmentPreviewUrls.value = {
+    ...attachmentPreviewUrls.value,
+    [attachment.id]: URL.createObjectURL(blob)
+  }
+}
+
+async function loadAttachmentPreview(mistake, kind) {
+  const isQuestion = kind === 'question'
+  const contentType = isQuestion ? mistake.questionContentType : mistake.solutionContentType
+  if (!mistake || !(contentType || '').startsWith('image/')) return
+  const response = await fetch(isQuestion ? mistakeApi.questionFileUrl(mistake.id) : mistakeApi.solutionFileUrl(mistake.id), {
+    headers: { Authorization: `Bearer ${getToken()}` }
+  })
+  if (!response.ok) return
+  const blob = await response.blob()
+  if (isQuestion) {
+    revokeQuestionPreview(mistake.id)
+    questionPreviewUrls.value = {
+      ...questionPreviewUrls.value,
+      [mistake.id]: URL.createObjectURL(blob)
+    }
+  } else {
+    revokeSolutionPreview(mistake.id)
+    solutionPreviewUrls.value = {
+      ...solutionPreviewUrls.value,
+      [mistake.id]: URL.createObjectURL(blob)
+    }
+  }
+}
+
+function revokeQuestionPreview(mistakeId) {
+  const url = questionPreviewUrls.value[mistakeId]
+  if (url) URL.revokeObjectURL(url)
+  const next = { ...questionPreviewUrls.value }
+  delete next[mistakeId]
+  questionPreviewUrls.value = next
+}
+
+function revokeSolutionPreview(mistakeId) {
+  const url = solutionPreviewUrls.value[mistakeId]
+  if (url) URL.revokeObjectURL(url)
+  const next = { ...solutionPreviewUrls.value }
+  delete next[mistakeId]
+  solutionPreviewUrls.value = next
 }
 
 async function loadFolders() {
@@ -1936,6 +2787,21 @@ function logout() {
   activeConversationIds.QA = null
   activeConversationIds.TEACHER = null
   historyPanelOpen.value = false
+  mistakes.value = []
+  mistakeStatuses.value = []
+  mistakeSubjectTags.value = []
+  activeMistake.value = null
+  resetMistakeForm()
+  closePractice()
+  mistakeModule.value = ''
+  subjectTagCreatorOpen.value = false
+  Object.values(questionPreviewUrls.value).forEach((url) => URL.revokeObjectURL(url))
+  Object.values(solutionPreviewUrls.value).forEach((url) => URL.revokeObjectURL(url))
+  Object.values(attachmentPreviewUrls.value).forEach((url) => URL.revokeObjectURL(url))
+  questionPreviewUrls.value = {}
+  solutionPreviewUrls.value = {}
+  attachmentPreviewUrls.value = {}
+  enlargedAttachment.value = null
   clearChatMessages()
 }
 

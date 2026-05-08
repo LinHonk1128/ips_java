@@ -112,24 +112,30 @@ public class ElasticsearchService {
 
     public List<Long> hybridSearch(Long userId, List<Long> folderIds, String question, AiSettingsResponse settings) {
         if (!enabled || folderIds.isEmpty()) return List.of();
-        List<Long> keywordIds = List.of();
-        List<Long> vectorIds = List.of();
         try {
             ensureIndex(settings.embeddingDimensions());
         } catch (Exception ignored) {
             return List.of();
         }
-        try {
-            keywordIds = keywordSearch(userId, folderIds, question);
-        } catch (Exception ignored) {
-        }
-        try {
-            List<Float> queryEmbedding = embeddingService.embed(question, settings);
-            vectorIds = queryEmbedding.isEmpty()
-                    ? List.of()
-                    : vectorSearch(userId, folderIds, queryEmbedding);
-        } catch (Exception ignored) {
-        }
+        CompletableFuture<List<Long>> keywordFuture = CompletableFuture.supplyAsync(() -> {
+            try {
+                return keywordSearch(userId, folderIds, question);
+            } catch (Exception ignored) {
+                return List.of();
+            }
+        });
+        CompletableFuture<List<Long>> vectorFuture = CompletableFuture.supplyAsync(() -> {
+            try {
+                List<Float> queryEmbedding = embeddingService.embed(question, settings);
+                return queryEmbedding.isEmpty()
+                        ? List.of()
+                        : vectorSearch(userId, folderIds, queryEmbedding);
+            } catch (Exception ignored) {
+                return List.of();
+            }
+        });
+        List<Long> keywordIds = keywordFuture.join();
+        List<Long> vectorIds = vectorFuture.join();
         return reciprocalRankFusion(keywordIds, vectorIds);
     }
 

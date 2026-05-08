@@ -17,6 +17,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -35,6 +36,7 @@ public class ChatService {
     private static final int MAX_RETRIEVED_CHUNKS = 8;
     private static final int MAX_INITIAL_CHUNKS_PER_FILE = 2;
     private static final Pattern CITATION_PATTERN = Pattern.compile("\\[(?:来源|片段)?(\\d+)]");
+    private static final Duration CHAT_TIMEOUT = Duration.ofSeconds(45);
 
     private final KnowledgeChunkRepository chunkRepository;
     private final StudyFolderRepository folderRepository;
@@ -372,11 +374,7 @@ public class ChatService {
         if (answer == null || answer.isBlank() || chunks.size() <= 1) {
             return false;
         }
-        int expectedCitationCount = Math.min(3, chunks.size());
-        if (chunks.stream().map(chunk -> chunk.getFile().getId()).distinct().count() > 1) {
-            expectedCitationCount = Math.min(expectedCitationCount, 2);
-        }
-        return distinctCitationCount(answer) < expectedCitationCount;
+        return distinctCitationCount(answer) == 0;
     }
 
     private int distinctCitationCount(String answer) {
@@ -418,6 +416,7 @@ public class ChatService {
                     "temperature", 0.3
             );
             HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(endpoint))
+                    .timeout(CHAT_TIMEOUT)
                     .header("Authorization", "Bearer " + settings.chatApiKey())
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload), StandardCharsets.UTF_8))
