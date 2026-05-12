@@ -349,7 +349,13 @@
           </div>
 
           <form class="question-box" @submit.prevent="ask">
-            <textarea v-model="chatForm.question" :disabled="!activeFolder || chatLoading" placeholder="输入问题，或在教师模式下输入：开始抽问本章重点" />
+            <div class="question-main">
+              <textarea v-model="chatForm.question" :disabled="!activeFolder || chatLoading" placeholder="输入问题，或在教师模式下输入：开始抽问本章重点" />
+              <label class="citation-toggle">
+                <input v-model="chatForm.withCitations" type="checkbox" :disabled="!activeFolder || chatLoading" />
+                <span>引用来源</span>
+              </label>
+            </div>
             <button class="primary-btn" type="submit" :disabled="!activeFolder || !chatForm.question || loading">
               <LoaderCircle v-if="chatLoading" :size="18" class="spin-icon" />
               <Send v-else :size="18" />
@@ -829,7 +835,7 @@
                 <p>可修改题目、解析和状态，也可以隐藏解析进行自测。</p>
               </div>
               <div class="mistake-section-actions">
-                <button class="secondary-btn slim" type="button" @click="showBrowseSolution = !showBrowseSolution">
+                <button class="secondary-btn slim" type="button" @click="setAllBrowseSolutions(!showBrowseSolution)">
                   <EyeOff v-if="showBrowseSolution" :size="16" />
                   <Eye v-else :size="16" />
                   {{ showBrowseSolution ? '隐藏解析' : '显示解析' }}
@@ -865,23 +871,44 @@
                 @click="activeMistake = mistake"
               >
                 <div class="mistake-card-head">
-                  <span class="status-pill compact" :class="{ mastered: mistake.mastered }">{{ mistake.statusName }}</span>
+                  <div class="mistake-card-meta">
+                    <select
+                      v-if="editingStatusMistakeId === mistake.id"
+                      class="status-select compact"
+                      :data-status-editor-id="mistake.id"
+                      :value="statusKeyForMistake(mistake)"
+                      aria-label="修改错题状态"
+                      @click.stop
+                      @dblclick.stop
+                      @change="changeMistakeStatusFromSelect(mistake, $event)"
+                      @blur="editingStatusMistakeId = null"
+                    >
+                      <option v-for="option in mistakeStatusOptions" :key="option.key" :value="option.key">
+                        {{ option.label }}
+                      </option>
+                    </select>
+                    <span
+                      v-else
+                      class="status-pill compact editable"
+                      :class="{ mastered: mistake.mastered }"
+                      title="双击修改状态"
+                      @dblclick.stop="openMistakeStatusEditor(mistake)"
+                    >
+                      {{ mistake.statusName }}
+                    </span>
+                  </div>
                   <div v-if="mistake.subjectTags?.length" class="subject-tag-strip">
                     <span v-for="tag in mistake.subjectTags" :key="tag.id">{{ tag.name }}</span>
                   </div>
                   <div class="mistake-card-actions">
-                    <button
-                      v-for="option in mistakeStatusOptions"
-                      :key="option.key"
-                      class="secondary-btn slim"
-                      type="button"
-                      @click.stop="setMistakeStatus(mistake, option)"
-                    >
-                      {{ option.label }}
+                    <button class="secondary-btn slim" type="button" @click.stop="toggleBrowseSolution(mistake)">
+                      <EyeOff v-if="isBrowseSolutionVisible(mistake)" :size="16" />
+                      <Eye v-else :size="16" />
+                      {{ isBrowseSolutionVisible(mistake) ? '隐藏解析' : '显示解析' }}
                     </button>
                   </div>
                 </div>
-                <div class="mistake-question">
+                <div class="mistake-question" :class="{ 'with-solution': isBrowseSolutionVisible(mistake) }">
                   <div v-if="mistake.questionText" v-html="renderRichText(mistake.questionText)"></div>
                   <div v-if="mistake.questionAttachments?.length" class="saved-image-strip">
                     <figure
@@ -900,26 +927,30 @@
                     {{ mistake.questionOriginalName || '题目附件' }}
                   </span>
                 </div>
-                <div v-if="showBrowseSolution" class="mistake-solution">
-                  <strong>解析</strong>
-                  <div v-if="mistake.solutionText" v-html="renderRichText(mistake.solutionText)"></div>
-                  <div v-if="mistake.solutionAttachments?.length" class="saved-image-strip">
-                    <figure
-                      v-for="attachment in mistake.solutionAttachments"
-                      :key="attachment.id || attachment.displayName"
-                      @dblclick="enlargeSavedAttachment(attachment)"
-                    >
-                      <img v-if="attachment.id && attachmentPreviewUrls[attachment.id]" :src="attachmentPreviewUrls[attachment.id]" alt="解析图片" />
-                      <img v-else-if="!attachment.id && solutionPreviewUrls[mistake.id]" :src="solutionPreviewUrls[mistake.id]" alt="解析图片" />
-                      <figcaption>{{ attachment.displayName || attachment.originalName }}</figcaption>
-                    </figure>
+                <div v-if="isBrowseSolutionVisible(mistake)" class="mistake-solution">
+                  <div class="mistake-solution-head">
+                    <strong>解析</strong>
                   </div>
-                  <img v-if="solutionPreviewUrls[mistake.id] && !mistake.solutionAttachments?.length" :src="solutionPreviewUrls[mistake.id]" alt="解析图片" />
-                  <span v-else-if="mistake.hasSolutionFile && !mistake.solutionAttachments?.length">
-                    <Image :size="15" />
-                    {{ mistake.solutionOriginalName || '解析附件' }}
-                  </span>
-                  <span v-if="!mistake.solutionText && !mistake.hasSolutionFile">暂无解析</span>
+                  <div class="mistake-solution-body">
+                    <div v-if="mistake.solutionText" v-html="renderRichText(mistake.solutionText)"></div>
+                    <div v-if="mistake.solutionAttachments?.length" class="saved-image-strip">
+                      <figure
+                        v-for="attachment in mistake.solutionAttachments"
+                        :key="attachment.id || attachment.displayName"
+                        @dblclick="enlargeSavedAttachment(attachment)"
+                      >
+                        <img v-if="attachment.id && attachmentPreviewUrls[attachment.id]" :src="attachmentPreviewUrls[attachment.id]" alt="解析图片" />
+                        <img v-else-if="!attachment.id && solutionPreviewUrls[mistake.id]" :src="solutionPreviewUrls[mistake.id]" alt="解析图片" />
+                        <figcaption>{{ attachment.displayName || attachment.originalName }}</figcaption>
+                      </figure>
+                    </div>
+                    <img v-if="solutionPreviewUrls[mistake.id] && !mistake.solutionAttachments?.length" :src="solutionPreviewUrls[mistake.id]" alt="解析图片" />
+                    <span v-else-if="mistake.hasSolutionFile && !mistake.solutionAttachments?.length">
+                      <Image :size="15" />
+                      {{ mistake.solutionOriginalName || '解析附件' }}
+                    </span>
+                    <span v-if="!mistake.solutionText && !mistake.hasSolutionFile">暂无解析</span>
+                  </div>
                 </div>
                 <div class="mistake-actions">
                   <button class="secondary-btn slim" type="button" @click.stop="editMistake(mistake)">
@@ -1206,6 +1237,8 @@ const practiceFinished = ref(false)
 const practiceRemainingSeconds = ref(0)
 const practiceTimerId = ref(null)
 const showBrowseSolution = ref(true)
+const browseSolutionVisibility = ref({})
+const editingStatusMistakeId = ref(null)
 const browseSubjectFilterIds = ref([])
 const solutionPreviewUrls = ref({})
 const questionPreviewUrls = ref({})
@@ -1223,7 +1256,7 @@ const defaultAiSettings = {
   embeddingDimensions: 1536
 }
 const aiPresetStorageKey = 'smart_exam_ai_setting_presets'
-const chatForm = reactive({ mode: 'QA', question: '' })
+const chatForm = reactive({ mode: 'QA', question: '', withCitations: true })
 const aiSettings = reactive(loadAiSettings())
 const aiSettingPresets = ref(loadAiSettingPresets())
 const selectedAiPresetId = ref('')
@@ -1749,6 +1782,41 @@ async function setMistakeStatus(mistake, option) {
   })
 }
 
+function statusKeyForMistake(mistake) {
+  if (mistake.mastered) return 'mastered'
+  return mistake.statusId ? `status:${mistake.statusId}` : 'mastered'
+}
+
+function openMistakeStatusEditor(mistake) {
+  editingStatusMistakeId.value = mistake.id
+  nextTick(() => {
+    document.querySelector(`[data-status-editor-id="${mistake.id}"]`)?.focus()
+  })
+}
+
+async function changeMistakeStatusFromSelect(mistake, event) {
+  const option = mistakeStatusOptions.value.find((item) => item.key === event.target.value)
+  editingStatusMistakeId.value = null
+  if (!option || option.key === statusKeyForMistake(mistake)) return
+  await setMistakeStatus(mistake, option)
+}
+
+function isBrowseSolutionVisible(mistake) {
+  return browseSolutionVisibility.value[mistake.id] ?? showBrowseSolution.value
+}
+
+function toggleBrowseSolution(mistake) {
+  browseSolutionVisibility.value = {
+    ...browseSolutionVisibility.value,
+    [mistake.id]: !isBrowseSolutionVisible(mistake)
+  }
+}
+
+function setAllBrowseSolutions(visible) {
+  showBrowseSolution.value = visible
+  browseSolutionVisibility.value = Object.fromEntries(filteredMistakes.value.map((mistake) => [mistake.id, visible]))
+}
+
 async function deleteMistake(mistake) {
   if (!mistake || !window.confirm('确定删除这道错题吗？')) return
   await run(async () => {
@@ -1756,6 +1824,10 @@ async function deleteMistake(mistake) {
     mistakes.value = mistakes.value.filter((item) => item.id !== mistake.id)
     activeMistake.value = mistakes.value[0] || null
     if (editingMistake.value?.id === mistake.id) resetMistakeForm()
+    if (editingStatusMistakeId.value === mistake.id) editingStatusMistakeId.value = null
+    const nextVisibility = { ...browseSolutionVisibility.value }
+    delete nextVisibility[mistake.id]
+    browseSolutionVisibility.value = nextVisibility
     revokeQuestionPreview(mistake.id)
     revokeSolutionPreview(mistake.id)
   })
@@ -2370,8 +2442,24 @@ async function ask() {
   activeSource.value = null
   chatLoading.value = true
   await run(async () => {
-    const response = await chatApi.ask({ ...aiSettings, ...chatForm, question, folderId: activeFolder.value.id })
-    messages.value.push({ role: 'assistant', content: response.answer, sources: response.sources })
+    const payload = { ...aiSettings, ...chatForm, question, folderId: activeFolder.value.id }
+    const assistantMessage = { role: 'assistant', content: '', sources: [] }
+    messages.value.push(assistantMessage)
+    try {
+      const response = await chatApi.askStream(payload, (delta) => {
+        assistantMessage.content += delta
+      })
+      assistantMessage.content = response?.answer || assistantMessage.content
+      assistantMessage.sources = response?.sources || []
+    } catch (streamError) {
+      if (assistantMessage.content.trim()) {
+        saveCurrentChatHistory()
+        return
+      }
+      messages.value.pop()
+      const response = await chatApi.ask(payload)
+      messages.value.push({ role: 'assistant', content: response.answer, sources: response.sources })
+    }
     saveCurrentChatHistory()
   })
   chatLoading.value = false

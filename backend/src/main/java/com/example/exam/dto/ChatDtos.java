@@ -21,7 +21,8 @@ public class ChatDtos {
             String embeddingModel,
             String embeddingEndpoint,
             String embeddingApiKey,
-            Integer embeddingDimensions
+            Integer embeddingDimensions,
+            Boolean withCitations
     ) {
     }
 

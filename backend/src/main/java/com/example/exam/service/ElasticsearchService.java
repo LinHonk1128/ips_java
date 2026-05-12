@@ -19,13 +19,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class ElasticsearchService {
-    private static final int CANDIDATE_SIZE = 30;
+    private static final Logger log = LoggerFactory.getLogger(ElasticsearchService.class);
+    private static final int CANDIDATE_SIZE = 20;
     private static final int RRF_K = 60;
+    private static final Duration ES_REQUEST_TIMEOUT = Duration.ofSeconds(2);
+    private static final long FAILURE_BACKOFF_MILLIS = Duration.ofSeconds(30).toMillis();
 
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -36,6 +41,7 @@ public class ElasticsearchService {
     private final String indexName;
     private final boolean enabled;
     private volatile boolean indexChecked = false;
+    private volatile long unavailableUntilMillis = 0;
 
     public ElasticsearchService(EmbeddingService embeddingService,
                                 @Value("${app.elasticsearch.url:http://localhost:9200}") String baseUrl,
@@ -111,16 +117,18 @@ public class ElasticsearchService {
     }
 
     public List<Long> hybridSearch(Long userId, List<Long> folderIds, String question, AiSettingsResponse settings) {
-        if (!enabled || folderIds.isEmpty()) return List.of();
+        if (!enabled || folderIds.isEmpty() || isTemporarilyUnavailable()) return List.of();
         try {
             ensureIndex(settings.embeddingDimensions());
-        } catch (Exception ignored) {
+        } catch (Exception ex) {
+            markTemporarilyUnavailable(ex);
             return List.of();
         }
         CompletableFuture<List<Long>> keywordFuture = CompletableFuture.supplyAsync(() -> {
             try {
                 return keywordSearch(userId, folderIds, question);
-            } catch (Exception ignored) {
+            } catch (Exception ex) {
+                markTemporarilyUnavailable(ex);
                 return List.of();
             }
         });
@@ -130,7 +138,8 @@ public class ElasticsearchService {
                 return queryEmbedding.isEmpty()
                         ? List.of()
                         : vectorSearch(userId, folderIds, queryEmbedding);
-            } catch (Exception ignored) {
+            } catch (Exception ex) {
+                markTemporarilyUnavailable(ex);
                 return List.of();
             }
         });
@@ -246,11 +255,20 @@ public class ElasticsearchService {
 
     private HttpResponse<String> requestRaw(String method, String path, String body) throws Exception {
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + encodePath(path)))
-                .timeout(Duration.ofSeconds(5))
+                .timeout(ES_REQUEST_TIMEOUT)
                 .header("Content-Type", "application/json")
                 .method(method, HttpRequest.BodyPublishers.ofString(body == null ? "" : body, StandardCharsets.UTF_8))
                 .build();
         return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+    }
+
+    private boolean isTemporarilyUnavailable() {
+        return System.currentTimeMillis() < unavailableUntilMillis;
+    }
+
+    private void markTemporarilyUnavailable(Exception ex) {
+        unavailableUntilMillis = System.currentTimeMillis() + FAILURE_BACKOFF_MILLIS;
+        log.warn("Elasticsearch unavailable; skipping ES retrieval for {}ms: {}", FAILURE_BACKOFF_MILLIS, ex.toString());
     }
 
     private String encodePath(String path) {

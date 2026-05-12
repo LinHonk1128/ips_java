@@ -1106,11 +1106,37 @@ textarea:focus {
   gap: 8px;
 }
 
+.question-main {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
 .question-box textarea {
   min-height: 76px;
   max-height: 180px;
   resize: vertical;
   line-height: 1.7;
+}
+
+.citation-toggle {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.citation-toggle input {
+  width: 16px;
+  min-height: 16px;
+  accent-color: var(--primary);
 }
 
 .upload-strip {
@@ -1589,6 +1615,32 @@ textarea:focus {
   font-size: 12px;
 }
 
+.status-pill.editable {
+  user-select: none;
+  cursor: pointer;
+}
+
+.status-pill.editable:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+
+.mistake-card-meta {
+  min-width: 116px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.status-select.compact {
+  width: auto;
+  min-width: 132px;
+  min-height: 30px;
+  padding: 4px 30px 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .practice-form {
   display: grid;
   grid-template-columns: minmax(100px, 140px) minmax(130px, auto) minmax(100px, 140px) auto;
@@ -1662,7 +1714,7 @@ textarea:focus {
 
 .mistake-card {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1677,7 +1729,6 @@ textarea:focus {
 }
 
 .mistake-question,
-.mistake-solution,
 .practice-answer {
   min-width: 0;
   padding: 12px;
@@ -1693,14 +1744,47 @@ textarea:focus {
   gap: 8px;
 }
 
+.mistake-question.with-solution {
+  border-bottom-right-radius: 2px;
+  border-bottom-left-radius: 2px;
+}
+
 .practice-board > .mistake-question {
   min-height: 180px;
 }
 
-.mistake-solution,
 .practice-answer {
   display: grid;
   gap: 8px;
+}
+
+.mistake-solution {
+  min-width: 0;
+  margin-top: -10px;
+  border: 1px solid #d8c7aa;
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  background: #fff8ea;
+  box-shadow: 0 10px 20px rgba(38, 35, 29, 0.07);
+  line-height: 1.75;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.mistake-solution-head {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(183, 121, 31, 0.18);
+  background: #f7eddc;
+  color: #6f4b16;
+}
+
+.mistake-solution-body {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
 }
 
 .mistake-question img,

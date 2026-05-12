@@ -26,16 +26,21 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Pattern;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
 import java.util.stream.IntStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Service
 public class ChatService {
-    private static final int MAX_RETRIEVED_CHUNKS = 8;
+    private static final Logger log = LoggerFactory.getLogger(ChatService.class);
+    private static final int MAX_RETRIEVED_CHUNKS = 3;
     private static final int MAX_INITIAL_CHUNKS_PER_FILE = 2;
-    private static final Pattern CITATION_PATTERN = Pattern.compile("\\[(?:来源|片段)?(\\d+)]");
     private static final Duration CHAT_TIMEOUT = Duration.ofSeconds(45);
 
     private final KnowledgeChunkRepository chunkRepository;
@@ -57,8 +62,10 @@ public class ChatService {
 
     @Transactional(readOnly = true)
     public ChatResponse ask(Long userId, ChatRequest request) {
+        long started = System.nanoTime();
         StudyFolder folder = folderRepository.findByIdAndOwnerId(request.folderId(), userId)
                 .orElseThrow(() -> new IllegalArgumentException("知识库不存在，或你没有访问权限"));
+        long folderLoadedAt = System.nanoTime();
         var settings = aiSettingsService.merge(
                 userId,
                 request.aiRole(),
@@ -71,20 +78,94 @@ public class ChatService {
                 request.embeddingApiKey(),
                 request.embeddingDimensions()
         );
+        long settingsLoadedAt = System.nanoTime();
+        boolean withCitations = request.withCitations() == null || request.withCitations();
         List<KnowledgeChunk> chunks = retrieve(folder, userId, request.question(), settings);
-        String prompt = buildPrompt(request.mode(), request.question(), chunks, settings.aiRole(), settings.systemPrompt());
+        long retrievedAt = System.nanoTime();
+        initializeSourceData(chunks);
+        String prompt = buildPrompt(request.mode(), request.question(), chunks, settings.aiRole(), settings.systemPrompt(), withCitations);
+        long promptBuiltAt = System.nanoTime();
         String answer = callModel(settings, prompt);
-        if (needsCitationRewrite(answer, chunks)) {
-            String rewritten = callModel(settings, buildCitationRewritePrompt(prompt, answer, chunks));
-            if (rewritten != null && !rewritten.isBlank()) {
-                answer = rewritten;
-            }
-        }
+        long modelCalledAt = System.nanoTime();
         if (answer == null || answer.isBlank()) {
-            answer = localAnswer(request.mode(), chunks, hasChatApiKey(settings));
+            answer = localAnswer(request.mode(), chunks, hasChatApiKey(settings), withCitations);
         }
-        List<Source> sources = buildSources(chunks, request.question(), answer);
+        List<Source> sources = withCitations ? buildSources(chunks, request.question(), answer) : List.of();
+        long finishedAt = System.nanoTime();
+        log.info("chat.ask timings userId={} folderId={} citations={} chunks={} folder={}ms settings={}ms retrieve={}ms prompt={}ms model={}ms sources={}ms total={}ms",
+                userId,
+                request.folderId(),
+                withCitations,
+                chunks.size(),
+                millisBetween(started, folderLoadedAt),
+                millisBetween(folderLoadedAt, settingsLoadedAt),
+                millisBetween(settingsLoadedAt, retrievedAt),
+                millisBetween(retrievedAt, promptBuiltAt),
+                millisBetween(promptBuiltAt, modelCalledAt),
+                millisBetween(modelCalledAt, finishedAt),
+                millisBetween(started, finishedAt));
         return new ChatResponse(answer, sources);
+    }
+
+    @Transactional(readOnly = true)
+    public SseEmitter askStream(Long userId, ChatRequest request) {
+        long started = System.nanoTime();
+        SseEmitter emitter = new SseEmitter(CHAT_TIMEOUT.plusSeconds(5).toMillis());
+        StudyFolder folder = folderRepository.findByIdAndOwnerId(request.folderId(), userId)
+                .orElseThrow(() -> new IllegalArgumentException("知识库不存在，或你没有访问权限"));
+        long folderLoadedAt = System.nanoTime();
+        var settings = aiSettingsService.merge(
+                userId,
+                request.aiRole(),
+                request.systemPrompt(),
+                request.chatModel() == null ? request.model() : request.chatModel(),
+                request.chatEndpoint() == null ? request.endpoint() : request.chatEndpoint(),
+                request.chatApiKey() == null ? request.apiKey() : request.chatApiKey(),
+                request.embeddingModel(),
+                request.embeddingEndpoint(),
+                request.embeddingApiKey(),
+                request.embeddingDimensions()
+        );
+        long settingsLoadedAt = System.nanoTime();
+        boolean withCitations = request.withCitations() == null || request.withCitations();
+        List<KnowledgeChunk> chunks = retrieve(folder, userId, request.question(), settings);
+        long retrievedAt = System.nanoTime();
+        initializeSourceData(chunks);
+        String prompt = buildPrompt(request.mode(), request.question(), chunks, settings.aiRole(), settings.systemPrompt(), withCitations);
+        long promptBuiltAt = System.nanoTime();
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                sendEvent(emitter, "ready", "ok");
+                String answer = callModelStream(settings, prompt, delta -> {
+                    sendEvent(emitter, "delta", delta);
+                });
+                long modelCalledAt = System.nanoTime();
+                if (answer == null || answer.isBlank()) {
+                    answer = localAnswer(request.mode(), chunks, hasChatApiKey(settings), withCitations);
+                    sendEvent(emitter, "delta", answer);
+                }
+                List<Source> sources = withCitations ? buildSources(chunks, request.question(), answer) : List.of();
+                long finishedAt = System.nanoTime();
+                sendEvent(emitter, "done", new ChatResponse(answer, sources));
+                emitter.complete();
+                log.info("chat.stream timings userId={} folderId={} citations={} chunks={} folder={}ms settings={}ms retrieve={}ms prompt={}ms model={}ms sources={}ms total={}ms",
+                        userId,
+                        request.folderId(),
+                        withCitations,
+                        chunks.size(),
+                        millisBetween(started, folderLoadedAt),
+                        millisBetween(folderLoadedAt, settingsLoadedAt),
+                        millisBetween(settingsLoadedAt, retrievedAt),
+                        millisBetween(retrievedAt, promptBuiltAt),
+                        millisBetween(promptBuiltAt, modelCalledAt),
+                        millisBetween(modelCalledAt, finishedAt),
+                        millisBetween(started, finishedAt));
+            } catch (Exception ex) {
+                emitter.completeWithError(ex);
+            }
+        });
+        return emitter;
     }
 
     @Transactional(readOnly = true)
@@ -184,6 +265,15 @@ public class ChatService {
                         contextualExcerpt(chunk.getContent(), terms));
                 })
                 .toList();
+    }
+
+    private void initializeSourceData(List<KnowledgeChunk> chunks) {
+        for (KnowledgeChunk chunk : chunks) {
+            chunk.getContent();
+            chunk.getFile().getId();
+            chunk.getFile().getOriginalName();
+            chunk.getFolder().getId();
+        }
     }
 
     private List<KnowledgeChunk> retrieve(StudyFolder folder, Long userId, String question, com.example.exam.dto.AiSettingsDtos.AiSettingsResponse settings) {
@@ -309,12 +399,49 @@ public class ChatService {
         return score;
     }
 
-    private String buildPrompt(QuestionMode mode, String question, List<KnowledgeChunk> chunks, String aiRole, String systemPrompt) {
+    private String buildPrompt(QuestionMode mode, String question, List<KnowledgeChunk> chunks, String aiRole, String systemPrompt, boolean withCitations) {
         String context = numberedContext(chunks);
         String role = aiRole == null || aiRole.isBlank() ? "严谨的考研答疑老师" : aiRole.trim();
         String customInstruction = systemPrompt == null || systemPrompt.isBlank()
                 ? "优先依据当前知识库回答；给出可追溯依据；如果资料不足，明确说明无法从知识库确认。"
                 : systemPrompt.trim();
+        if (!withCitations) {
+            if (mode == QuestionMode.TEACHER) {
+                return """
+                        角色：
+                        %s
+
+                        补充要求：
+                        %s
+
+                        你正在进行考研复习抽问。请只依据下方知识库内容，用简体中文向用户提出 1 个循序渐进的问题。
+                        回答中不要输出引用编号或来源标记。如果知识库不足以出题，请直接说明“当前知识库资料不足，无法确认出题依据”，不要编造。
+
+                        知识库：
+                        %s
+
+                        用户输入：
+                        %s
+                        """.formatted(role, customInstruction, context, question);
+            }
+            return """
+                    角色：
+                    %s
+
+                    补充要求：
+                    %s
+
+                    你是考研知识库答疑助手。请只依据下方知识库内容，用简体中文回答用户问题。
+                    回答要清晰、分点、有结论，但不要输出引用编号、来源标记或文末参考列表。
+                    如果知识库里没有足够依据，请明确说“无法从当前知识库确认”，不要用常识或猜测补全。
+
+                    知识库：
+                    %s
+
+                    用户问题：
+                    %s
+                    """.formatted(role, customInstruction, context, question);
+        }
         if (mode == QuestionMode.TEACHER) {
             return """
                     角色：
@@ -364,44 +491,15 @@ public class ChatService {
                             index + 1,
                             chunk.getFile().getOriginalName(),
                             chunk.getPageNumber(),
-                            chunk.getContent()
+                            promptExcerpt(chunk.getContent())
                     );
                 })
                 .collect(java.util.stream.Collectors.joining("\n---\n"));
     }
 
-    private boolean needsCitationRewrite(String answer, List<KnowledgeChunk> chunks) {
-        if (answer == null || answer.isBlank() || chunks.size() <= 1) {
-            return false;
-        }
-        return distinctCitationCount(answer) == 0;
-    }
-
-    private int distinctCitationCount(String answer) {
-        Set<Integer> citations = new HashSet<>();
-        var matcher = CITATION_PATTERN.matcher(answer == null ? "" : answer);
-        while (matcher.find()) {
-            citations.add(Integer.parseInt(matcher.group(1)));
-        }
-        return citations.size();
-    }
-
-    private String buildCitationRewritePrompt(String originalPrompt, String answer, List<KnowledgeChunk> chunks) {
-        int requiredCitationCount = Math.min(3, chunks.size());
-        if (chunks.stream().map(chunk -> chunk.getFile().getId()).distinct().count() > 1) {
-            requiredCitationCount = Math.min(requiredCitationCount, 2);
-        }
-        return originalPrompt + """
-
-                上一次回答只引用了很少的资料编号，证据覆盖不足。请在保留原意的基础上重写回答：
-                1. 至少使用 %d 个不同资料编号；
-                2. 不同要点引用不同片段，尤其是定义、分类、性能指标、层次结构等要点；
-                3. 引用仍然必须贴在对应句子或条目后，不要集中放在末尾；
-                4. 不要引用资料中没有支持的内容。
-
-                上一次回答：
-                %s
-                """.formatted(requiredCitationCount, answer);
+    private String promptExcerpt(String content) {
+        String normalized = content == null ? "" : content.replaceAll("\\s+", " ").trim();
+        return normalized.length() > 600 ? normalized.substring(0, 600) + "..." : normalized;
     }
 
     private String callModel(com.example.exam.dto.AiSettingsDtos.AiSettingsResponse settings, String prompt) {
@@ -413,7 +511,8 @@ public class ChatService {
             Map<String, Object> payload = Map.of(
                     "model", settings.chatModel() == null || settings.chatModel().isBlank() ? "gpt-4o-mini" : settings.chatModel(),
                     "messages", List.of(Map.of("role", "user", "content", prompt)),
-                    "temperature", 0.3
+                    "temperature", 0.2,
+                    "max_tokens", 600
             );
             HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(endpoint))
                     .timeout(CHAT_TIMEOUT)
@@ -432,6 +531,66 @@ public class ChatService {
         return null;
     }
 
+    private String callModelStream(com.example.exam.dto.AiSettingsDtos.AiSettingsResponse settings, String prompt, Consumer<String> onDelta) {
+        if (!hasChatApiKey(settings)) {
+            return null;
+        }
+        try {
+            String endpoint = normalizeChatCompletionsEndpoint(settings.chatEndpoint());
+            Map<String, Object> payload = Map.of(
+                    "model", settings.chatModel() == null || settings.chatModel().isBlank() ? "gpt-4o-mini" : settings.chatModel(),
+                    "messages", List.of(Map.of("role", "user", "content", prompt)),
+                    "temperature", 0.2,
+                    "max_tokens", 600,
+                    "stream", true
+            );
+            HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(endpoint))
+                    .timeout(CHAT_TIMEOUT)
+                    .header("Authorization", "Bearer " + settings.chatApiKey())
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload), StandardCharsets.UTF_8))
+                    .build();
+            HttpResponse<Stream<String>> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofLines());
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                return null;
+            }
+            StringBuilder answer = new StringBuilder();
+            try (Stream<String> lines = response.body()) {
+                lines.forEach(line -> appendStreamDelta(line, answer, onDelta));
+            }
+            return answer.toString();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private void appendStreamDelta(String line, StringBuilder answer, Consumer<String> onDelta) {
+        if (line == null || !line.startsWith("data:")) {
+            return;
+        }
+        String data = line.substring("data:".length()).trim();
+        if (data.isBlank() || "[DONE]".equals(data)) {
+            return;
+        }
+        try {
+            JsonNode root = mapper.readTree(data);
+            String delta = root.at("/choices/0/delta/content").asText("");
+            if (!delta.isEmpty()) {
+                answer.append(delta);
+                onDelta.accept(delta);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void sendEvent(SseEmitter emitter, String name, Object data) {
+        try {
+            emitter.send(SseEmitter.event().name(name).data(data));
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to send chat stream event", ex);
+        }
+    }
+
     private String normalizeChatCompletionsEndpoint(String endpoint) {
         String value = endpoint == null || endpoint.isBlank()
                 ? "https://api.openai.com/v1/chat/completions"
@@ -448,7 +607,7 @@ public class ChatService {
         return value;
     }
 
-    private String localAnswer(QuestionMode mode, List<KnowledgeChunk> chunks, boolean modelConfigured) {
+    private String localAnswer(QuestionMode mode, List<KnowledgeChunk> chunks, boolean modelConfigured, boolean withCitations) {
         if (chunks.isEmpty()) {
             return "当前知识库还没有可用内容。请先上传资料，检查自动抽取文本是否有效，再保存为知识库。";
         }
@@ -456,21 +615,26 @@ public class ChatService {
         String prefix = modelConfigured
                 ? "大模型接口暂时没有返回有效内容，请检查 API Key、模型名和 Endpoint。下面先给出本地检索摘要：\n\n"
                 : "";
+        String citation = withCitations ? " [1]" : "";
         if (mode == QuestionMode.TEACHER) {
-            return prefix + "教师模式建议先围绕这段资料追问：请你先解释其中的核心概念，再说明它常见的考法。[1]\n\n依据：" + first;
+            return prefix + "教师模式建议先围绕这段资料追问：请你先解释其中的核心概念，再说明它常见的考法。" + citation + "\n\n依据：" + first;
         }
         List<String> lines = new ArrayList<>();
         if (!prefix.isBlank()) {
             lines.add(prefix.trim());
         }
-        lines.add("基于当前知识库，检索到的最相关内容是：[1]");
-        lines.add(first + " [1]");
+        lines.add("基于当前知识库，检索到的最相关内容是：" + citation);
+        lines.add(first + citation);
         lines.add("你可以继续追问：这部分有哪些易错点，或者让它整理成考试答题模板。");
         return String.join("\n\n", lines);
     }
 
     private boolean hasChatApiKey(com.example.exam.dto.AiSettingsDtos.AiSettingsResponse settings) {
         return settings.chatApiKey() != null && !settings.chatApiKey().isBlank();
+    }
+
+    private long millisBetween(long startNanos, long endNanos) {
+        return Duration.ofNanos(endNanos - startNanos).toMillis();
     }
 
     private boolean isUsableKnowledgeContent(String content) {

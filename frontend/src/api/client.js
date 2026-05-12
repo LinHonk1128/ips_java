@@ -43,6 +43,68 @@ export async function api(path, options = {}) {
   return data
 }
 
+function dispatchSseEvent(rawEvent, handlers) {
+  const lines = rawEvent.split(/\r?\n/)
+  let eventName = 'message'
+  const dataLines = []
+  for (const line of lines) {
+    if (line.startsWith('event:')) {
+      eventName = line.slice(6).trim()
+    } else if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).replace(/^ /, ''))
+    }
+  }
+  const data = dataLines.join('\n')
+  if (!data) return null
+  if (eventName === 'delta') {
+    handlers.onDelta?.(data)
+    return null
+  }
+  if (eventName === 'done') {
+    return JSON.parse(data)
+  }
+  return null
+}
+
+export async function streamApi(path, payload, handlers = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'text/event-stream'
+  }
+  const token = getToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload)
+  })
+  if (!response.ok || !response.body) {
+    const text = await response.text()
+    const data = text ? JSON.parse(text) : null
+    throw new Error(data?.message || '请求失败')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let donePayload = null
+  let reading = true
+  while (reading) {
+    const { value, done } = await reader.read()
+    reading = !done
+    buffer += decoder.decode(value || new Uint8Array(), { stream: reading })
+    const events = buffer.split(/\r?\n\r?\n/)
+    buffer = events.pop() || ''
+    for (const event of events) {
+      donePayload = dispatchSseEvent(event, handlers) || donePayload
+    }
+  }
+  if (buffer.trim()) {
+    donePayload = dispatchSseEvent(buffer, handlers) || donePayload
+  }
+  return donePayload
+}
+
 export const authApi = {
   register: (payload) => api('/auth/register', { method: 'POST', body: JSON.stringify(payload) }),
   login: (payload) => api('/auth/login', { method: 'POST', body: JSON.stringify(payload) })
@@ -72,6 +134,7 @@ export const fileApi = {
 
 export const chatApi = {
   ask: (payload) => api('/chat', { method: 'POST', body: JSON.stringify(payload) }),
+  askStream: (payload, onDelta) => streamApi('/chat/stream', payload, { onDelta }),
   createNote: (payload) => api('/chat/note', { method: 'POST', body: JSON.stringify(payload) })
 }
 

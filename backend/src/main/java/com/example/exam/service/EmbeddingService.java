@@ -16,9 +16,11 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class EmbeddingService {
+    private static final Duration EMBEDDING_TIMEOUT = Duration.ofSeconds(5);
+
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
+            .connectTimeout(Duration.ofSeconds(3))
             .build();
 
     public List<Float> embed(String input, AiSettingsResponse settings) {
@@ -32,7 +34,7 @@ public class EmbeddingService {
                     "input", input
             );
             HttpRequest request = HttpRequest.newBuilder(URI.create(endpoint))
-                    .timeout(Duration.ofSeconds(20))
+                    .timeout(EMBEDDING_TIMEOUT)
                     .header("Authorization", "Bearer " + settings.embeddingApiKey())
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(payload), StandardCharsets.UTF_8))

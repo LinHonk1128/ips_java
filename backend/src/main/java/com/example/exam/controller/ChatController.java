@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/api/chat")
@@ -36,6 +37,12 @@ public class ChatController {
     public ChatResponse ask(@Valid @RequestBody ChatRequest request) {
         User user = currentUserService.user();
         return chatService.ask(user.getId(), request);
+    }
+
+    @PostMapping("/stream")
+    public SseEmitter askStream(@Valid @RequestBody ChatRequest request) {
+        User user = currentUserService.user();
+        return chatService.askStream(user.getId(), request);
     }
 
     @PostMapping("/note")
