@@ -295,7 +295,7 @@
                   <div v-if="folderChatHistories.length === 0" class="history-empty">当前文件夹暂无历史记录</div>
                 </div>
               </div>
-              <button class="secondary-btn slim" type="button" :disabled="!activeFolder" @click="startNewConversation">
+              <button class="secondary-btn slim" type="button" :disabled="chatForm.useKnowledgeBase && !activeFolder" @click="startNewConversation">
                 <RotateCcw :size="16" />
                 新对话
               </button>
@@ -325,7 +325,7 @@
             </article>
             <article v-if="chatLoading" class="message assistant pending-message" aria-live="polite">
               <LoaderCircle :size="18" />
-              <span>正在检索知识库并生成回答…</span>
+              <span>{{ pendingChatText }}</span>
             </article>
             <div
               v-if="activeSource"
@@ -343,20 +343,30 @@
             </div>
             <div v-if="messages.length === 0" class="empty-chat">
               <MessageSquare :size="30" />
-              <strong>{{ activeFolder ? '开始围绕当前知识库提问' : '先选择一个文件夹' }}</strong>
-              <span>答疑模式会追溯资料来源，教师模式会根据知识点向你提问。</span>
+              <strong>{{ emptyChatTitle }}</strong>
+              <span>{{ emptyChatDescription }}</span>
             </div>
           </div>
 
           <form class="question-box" @submit.prevent="ask">
             <div class="question-main">
-              <textarea v-model="chatForm.question" :disabled="!activeFolder || chatLoading" placeholder="输入问题，或在教师模式下输入：开始抽问本章重点" />
-              <label class="citation-toggle">
-                <input v-model="chatForm.withCitations" type="checkbox" :disabled="!activeFolder || chatLoading" />
-                <span>引用来源</span>
-              </label>
+              <textarea v-model="chatForm.question" :disabled="chatInputDisabled" :placeholder="chatPlaceholder" />
+              <div class="chat-options">
+                <label class="chat-toggle">
+                  <input v-model="chatForm.useKnowledgeBase" type="checkbox" :disabled="chatLoading" @change="handleKnowledgeModeChange" />
+                  <span>使用知识库</span>
+                </label>
+                <label class="chat-toggle" :class="{ muted: !chatForm.useKnowledgeBase }">
+                  <input v-model="chatForm.withCitations" type="checkbox" :disabled="!chatForm.useKnowledgeBase || !activeFolder || chatLoading" />
+                  <span>引用来源</span>
+                </label>
+                <label class="chat-toggle" :class="{ muted: !chatForm.useKnowledgeBase }">
+                  <input v-model="chatForm.deepAnswer" type="checkbox" :disabled="!chatForm.useKnowledgeBase || !activeFolder || chatLoading" />
+                  <span>深度回答</span>
+                </label>
+              </div>
             </div>
-            <button class="primary-btn" type="submit" :disabled="!activeFolder || !chatForm.question || loading">
+            <button class="primary-btn" type="submit" :disabled="!canSubmitChat">
               <LoaderCircle v-if="chatLoading" :size="18" class="spin-icon" />
               <Send v-else :size="18" />
               {{ chatLoading ? '生成中' : '发送' }}
@@ -1256,7 +1266,7 @@ const defaultAiSettings = {
   embeddingDimensions: 1536
 }
 const aiPresetStorageKey = 'smart_exam_ai_setting_presets'
-const chatForm = reactive({ mode: 'QA', question: '', withCitations: true })
+const chatForm = reactive({ mode: 'QA', question: '', useKnowledgeBase: true, withCitations: true, deepAnswer: false })
 const aiSettings = reactive(loadAiSettings())
 const aiSettingPresets = ref(loadAiSettingPresets())
 const selectedAiPresetId = ref('')
@@ -1300,6 +1310,24 @@ const pageTitle = computed(() => pageMeta[activePage.value].title)
 const pageDescription = computed(() => pageMeta[activePage.value].description)
 const messages = computed(() => chatMessages[chatForm.mode])
 const currentChatHasMessages = computed(() => messages.value.length > 0)
+const chatInputDisabled = computed(() => chatLoading.value || (chatForm.useKnowledgeBase && !activeFolder.value))
+const canSubmitChat = computed(() => !loading.value && !chatInputDisabled.value && chatForm.question.trim().length > 0)
+const chatPlaceholder = computed(() => chatForm.useKnowledgeBase
+  ? '输入问题，或在教师模式下输入：开始抽问本章重点'
+  : '不引用知识库，直接输入要和大模型聊的问题'
+)
+const pendingChatText = computed(() => {
+  if (!chatForm.useKnowledgeBase) return '正在请求大模型生成回答…'
+  return chatForm.deepAnswer ? '正在深度检索知识库并生成回答…' : '正在检索知识库并生成回答…'
+})
+const emptyChatTitle = computed(() => {
+  if (!chatForm.useKnowledgeBase) return '直接和大模型聊天'
+  return activeFolder.value ? '开始围绕当前知识库提问' : '先选择一个文件夹'
+})
+const emptyChatDescription = computed(() => {
+  if (!chatForm.useKnowledgeBase) return '当前不会检索资料片段，也不会返回来源引用。'
+  return '答疑模式会追溯资料来源，教师模式会根据知识点向你提问。'
+})
 const visibleFolders = computed(() => {
   const parentId = activeFolder.value?.id ?? null
   return folders.value.filter((folder) => (folder.parentId ?? null) === parentId)
@@ -1471,7 +1499,7 @@ function saveCurrentChatHistory() {
 }
 
 function startNewConversation() {
-  if (!activeFolder.value) return
+  if (!activeFolder.value && chatForm.useKnowledgeBase) return
   saveCurrentChatHistory()
   messages.value.splice(0)
   activeConversationIds[chatForm.mode] = null
@@ -2104,6 +2132,7 @@ async function moveFile() {
 
 function useCurrentFolderAsKnowledgeBase() {
   if (!activeFolder.value) return
+  chatForm.useKnowledgeBase = true
   activePage.value = 'chat'
   activeSource.value = null
 }
@@ -2136,6 +2165,12 @@ function openFileInEditor(file) {
 function setChatMode(mode) {
   chatForm.mode = mode
   activeSource.value = null
+}
+
+function handleKnowledgeModeChange() {
+  if (!chatForm.useKnowledgeBase) {
+    activeSource.value = null
+  }
 }
 
 function setEditorContent(content = '', pageIndex = activeFilePageIndex.value) {
@@ -2435,14 +2470,14 @@ async function deleteFile(file) {
 
 async function ask() {
   const question = chatForm.question.trim()
-  if (!question || !activeFolder.value || chatLoading.value) return
+  if (!question || chatInputDisabled.value || loading.value) return
   messages.value.push({ role: 'user', content: question })
   saveCurrentChatHistory()
   chatForm.question = ''
   activeSource.value = null
   chatLoading.value = true
   await run(async () => {
-    const payload = { ...aiSettings, ...chatForm, question, folderId: activeFolder.value.id }
+    const payload = { ...aiSettings, ...chatForm, question, folderId: activeFolder.value?.id ?? null }
     const assistantMessage = { role: 'assistant', content: '', sources: [] }
     messages.value.push(assistantMessage)
     try {

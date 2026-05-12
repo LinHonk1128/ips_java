@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,9 +40,14 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @Service
 public class ChatService {
     private static final Logger log = LoggerFactory.getLogger(ChatService.class);
-    private static final int MAX_RETRIEVED_CHUNKS = 3;
+    private static final int MAX_RETRIEVED_CHUNKS = 5;
+    private static final int MAX_RERANK_CANDIDATES = 20;
     private static final int MAX_INITIAL_CHUNKS_PER_FILE = 2;
-    private static final Duration CHAT_TIMEOUT = Duration.ofSeconds(45);
+    private static final int DEFAULT_CHAT_MAX_TOKENS = 1600;
+    private static final int DIRECT_CHAT_MAX_TOKENS = 2000;
+    private static final int DEEP_CHAT_MAX_TOKENS = 2400;
+    private static final int QUERY_REWRITE_MAX_TOKENS = 120;
+    private static final Duration CHAT_TIMEOUT = Duration.ofSeconds(90);
 
     private final KnowledgeChunkRepository chunkRepository;
     private final StudyFolderRepository folderRepository;
@@ -63,8 +69,8 @@ public class ChatService {
     @Transactional(readOnly = true)
     public ChatResponse ask(Long userId, ChatRequest request) {
         long started = System.nanoTime();
-        StudyFolder folder = folderRepository.findByIdAndOwnerId(request.folderId(), userId)
-                .orElseThrow(() -> new IllegalArgumentException("知识库不存在，或你没有访问权限"));
+        boolean useKnowledgeBase = useKnowledgeBase(request);
+        StudyFolder folder = useKnowledgeBase ? requireFolder(request.folderId(), userId) : null;
         long folderLoadedAt = System.nanoTime();
         var settings = aiSettingsService.merge(
                 userId,
@@ -79,22 +85,31 @@ public class ChatService {
                 request.embeddingDimensions()
         );
         long settingsLoadedAt = System.nanoTime();
-        boolean withCitations = request.withCitations() == null || request.withCitations();
-        List<KnowledgeChunk> chunks = retrieve(folder, userId, request.question(), settings);
+        boolean withCitations = useKnowledgeBase && (request.withCitations() == null || request.withCitations());
+        List<KnowledgeChunk> chunks = useKnowledgeBase
+                ? retrieve(folder, userId, request.question(), settings, deepAnswer(request))
+                : List.of();
         long retrievedAt = System.nanoTime();
         initializeSourceData(chunks);
-        String prompt = buildPrompt(request.mode(), request.question(), chunks, settings.aiRole(), settings.systemPrompt(), withCitations);
+        String prompt = useKnowledgeBase
+                ? buildPrompt(request.mode(), request.question(), chunks, settings.aiRole(), settings.systemPrompt(), withCitations)
+                : buildDirectPrompt(request.mode(), request.question(), settings.aiRole(), settings.systemPrompt());
         long promptBuiltAt = System.nanoTime();
-        String answer = callModel(settings, prompt);
+        int responseTokenLimit = responseTokenLimit(request, useKnowledgeBase);
+        String answer = callModel(settings, prompt, responseTokenLimit, 0.2);
         long modelCalledAt = System.nanoTime();
         if (answer == null || answer.isBlank()) {
-            answer = localAnswer(request.mode(), chunks, hasChatApiKey(settings), withCitations);
+            answer = useKnowledgeBase
+                    ? localAnswer(request.mode(), chunks, hasChatApiKey(settings), withCitations)
+                    : localDirectAnswer(hasChatApiKey(settings));
         }
-        List<Source> sources = withCitations ? buildSources(chunks, request.question(), answer) : List.of();
+        List<Source> sources = useKnowledgeBase && withCitations ? buildSources(chunks, request.question(), answer) : List.of();
         long finishedAt = System.nanoTime();
-        log.info("chat.ask timings userId={} folderId={} citations={} chunks={} folder={}ms settings={}ms retrieve={}ms prompt={}ms model={}ms sources={}ms total={}ms",
+        log.info("chat.ask timings userId={} folderId={} knowledgeBase={} deep={} citations={} chunks={} folder={}ms settings={}ms retrieve={}ms prompt={}ms model={}ms sources={}ms total={}ms",
                 userId,
                 request.folderId(),
+                useKnowledgeBase,
+                deepAnswer(request),
                 withCitations,
                 chunks.size(),
                 millisBetween(started, folderLoadedAt),
@@ -111,8 +126,8 @@ public class ChatService {
     public SseEmitter askStream(Long userId, ChatRequest request) {
         long started = System.nanoTime();
         SseEmitter emitter = new SseEmitter(CHAT_TIMEOUT.plusSeconds(5).toMillis());
-        StudyFolder folder = folderRepository.findByIdAndOwnerId(request.folderId(), userId)
-                .orElseThrow(() -> new IllegalArgumentException("知识库不存在，或你没有访问权限"));
+        boolean useKnowledgeBase = useKnowledgeBase(request);
+        StudyFolder folder = useKnowledgeBase ? requireFolder(request.folderId(), userId) : null;
         long folderLoadedAt = System.nanoTime();
         var settings = aiSettingsService.merge(
                 userId,
@@ -127,31 +142,40 @@ public class ChatService {
                 request.embeddingDimensions()
         );
         long settingsLoadedAt = System.nanoTime();
-        boolean withCitations = request.withCitations() == null || request.withCitations();
-        List<KnowledgeChunk> chunks = retrieve(folder, userId, request.question(), settings);
+        boolean withCitations = useKnowledgeBase && (request.withCitations() == null || request.withCitations());
+        List<KnowledgeChunk> chunks = useKnowledgeBase
+                ? retrieve(folder, userId, request.question(), settings, deepAnswer(request))
+                : List.of();
         long retrievedAt = System.nanoTime();
         initializeSourceData(chunks);
-        String prompt = buildPrompt(request.mode(), request.question(), chunks, settings.aiRole(), settings.systemPrompt(), withCitations);
+        String prompt = useKnowledgeBase
+                ? buildPrompt(request.mode(), request.question(), chunks, settings.aiRole(), settings.systemPrompt(), withCitations)
+                : buildDirectPrompt(request.mode(), request.question(), settings.aiRole(), settings.systemPrompt());
         long promptBuiltAt = System.nanoTime();
 
         CompletableFuture.runAsync(() -> {
             try {
                 sendEvent(emitter, "ready", "ok");
-                String answer = callModelStream(settings, prompt, delta -> {
+                int responseTokenLimit = responseTokenLimit(request, useKnowledgeBase);
+                String answer = callModelStream(settings, prompt, responseTokenLimit, delta -> {
                     sendEvent(emitter, "delta", delta);
                 });
                 long modelCalledAt = System.nanoTime();
                 if (answer == null || answer.isBlank()) {
-                    answer = localAnswer(request.mode(), chunks, hasChatApiKey(settings), withCitations);
+                    answer = useKnowledgeBase
+                            ? localAnswer(request.mode(), chunks, hasChatApiKey(settings), withCitations)
+                            : localDirectAnswer(hasChatApiKey(settings));
                     sendEvent(emitter, "delta", answer);
                 }
-                List<Source> sources = withCitations ? buildSources(chunks, request.question(), answer) : List.of();
+                List<Source> sources = useKnowledgeBase && withCitations ? buildSources(chunks, request.question(), answer) : List.of();
                 long finishedAt = System.nanoTime();
                 sendEvent(emitter, "done", new ChatResponse(answer, sources));
                 emitter.complete();
-                log.info("chat.stream timings userId={} folderId={} citations={} chunks={} folder={}ms settings={}ms retrieve={}ms prompt={}ms model={}ms sources={}ms total={}ms",
+                log.info("chat.stream timings userId={} folderId={} knowledgeBase={} deep={} citations={} chunks={} folder={}ms settings={}ms retrieve={}ms prompt={}ms model={}ms sources={}ms total={}ms",
                         userId,
                         request.folderId(),
+                        useKnowledgeBase,
+                        deepAnswer(request),
                         withCitations,
                         chunks.size(),
                         millisBetween(started, folderLoadedAt),
@@ -205,6 +229,29 @@ public class ChatService {
             note = localConversationNote(request.messages(), hasChatApiKey(settings));
         }
         return note.trim();
+    }
+
+    private StudyFolder requireFolder(Long folderId, Long userId) {
+        if (folderId == null) {
+            throw new IllegalArgumentException("请选择知识库文件夹，或关闭“使用知识库”后直接聊天");
+        }
+        return folderRepository.findByIdAndOwnerId(folderId, userId)
+                .orElseThrow(() -> new IllegalArgumentException("知识库不存在，或你没有访问权限"));
+    }
+
+    private boolean useKnowledgeBase(ChatRequest request) {
+        return request.useKnowledgeBase() == null || request.useKnowledgeBase();
+    }
+
+    private boolean deepAnswer(ChatRequest request) {
+        return Boolean.TRUE.equals(request.deepAnswer());
+    }
+
+    private int responseTokenLimit(ChatRequest request, boolean useKnowledgeBase) {
+        if (!useKnowledgeBase) {
+            return DIRECT_CHAT_MAX_TOKENS;
+        }
+        return deepAnswer(request) ? DEEP_CHAT_MAX_TOKENS : DEFAULT_CHAT_MAX_TOKENS;
     }
 
     private String conversationTranscript(List<ConversationMessage> messages) {
@@ -276,25 +323,32 @@ public class ChatService {
         }
     }
 
-    private List<KnowledgeChunk> retrieve(StudyFolder folder, Long userId, String question, com.example.exam.dto.AiSettingsDtos.AiSettingsResponse settings) {
+    private List<KnowledgeChunk> retrieve(StudyFolder folder,
+                                          Long userId,
+                                          String question,
+                                          com.example.exam.dto.AiSettingsDtos.AiSettingsResponse settings,
+                                          boolean deepAnswer) {
         List<Long> folderIds = folderScope(folder, userId);
         List<Long> elasticChunkIds = elasticsearchService.hybridSearch(userId, folderIds, question, settings);
-        if (!elasticChunkIds.isEmpty()) {
-            Map<Long, KnowledgeChunk> byId = chunkRepository.findAllById(elasticChunkIds).stream()
-                    .filter(chunk -> chunk.getFile().isKnowledgeEnabled())
-                    .filter(chunk -> isUsableKnowledgeContent(chunk.getContent()))
-                    .collect(java.util.stream.Collectors.toMap(KnowledgeChunk::getId, chunk -> chunk));
-            List<KnowledgeChunk> chunks = elasticChunkIds.stream()
-                    .map(byId::get)
-                    .filter(java.util.Objects::nonNull)
-                    .toList();
-            if (!chunks.isEmpty()) {
-                return diversifyChunks(chunks);
-            }
+        String deepQuery = "";
+        if (deepAnswer) {
+            deepQuery = buildDeepSearchQuery(question, settings);
+        }
+        List<KnowledgeChunk> chunks = loadRankedChunks(elasticChunkIds, MAX_RERANK_CANDIDATES);
+        if (!deepQuery.isBlank() && !sameQuery(question, deepQuery)) {
+            List<KnowledgeChunk> extraChunks = loadRankedChunks(
+                    elasticsearchService.hybridSearch(userId, folderIds, deepQuery, settings),
+                    MAX_RERANK_CANDIDATES
+            );
+            chunks = mergeCandidates(MAX_RERANK_CANDIDATES, List.of(chunks, extraChunks));
+        }
+        if (!chunks.isEmpty()) {
+            return rerankAndDiversify(chunks, deepQuery.isBlank() ? question : question + " " + deepQuery);
         }
 
         List<KnowledgeChunk> all = chunkRepository.findExistingByFolderIdInAndOwnerId(folderIds, userId);
-        List<String> terms = searchTerms(question);
+        String rankingQuestion = deepQuery.isBlank() ? question : question + " " + deepQuery;
+        List<String> terms = searchTerms(rankingQuestion);
         List<KnowledgeChunk> ranked = all.stream()
                 .filter(chunk -> isUsableKnowledgeContent(chunk.getContent()))
                 .sorted(Comparator
@@ -310,11 +364,96 @@ public class ChatService {
 
         List<KnowledgeChunk> candidates = ranked.stream()
                 .filter(chunk -> score(chunk.getContent(), terms) >= minimumScore)
+                .limit(MAX_RERANK_CANDIDATES)
                 .toList();
-        return diversifyChunks(candidates.isEmpty() ? ranked : candidates);
+        List<KnowledgeChunk> fallbackCandidates = candidates.isEmpty()
+                ? ranked.stream().limit(MAX_RERANK_CANDIDATES).toList()
+                : candidates;
+        return rerankAndDiversify(fallbackCandidates, rankingQuestion);
     }
 
-    private List<KnowledgeChunk> diversifyChunks(List<KnowledgeChunk> ranked) {
+    private List<KnowledgeChunk> loadRankedChunks(List<Long> chunkIds, int limit) {
+        if (chunkIds == null || chunkIds.isEmpty()) {
+            return List.of();
+        }
+        List<Long> limitedIds = chunkIds.stream().limit(limit).toList();
+        Map<Long, KnowledgeChunk> byId = chunkRepository.findAllById(limitedIds).stream()
+                .filter(chunk -> chunk.getFile().isKnowledgeEnabled())
+                .filter(chunk -> isUsableKnowledgeContent(chunk.getContent()))
+                .collect(java.util.stream.Collectors.toMap(KnowledgeChunk::getId, chunk -> chunk));
+        return limitedIds.stream()
+                .map(byId::get)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
+    private List<KnowledgeChunk> mergeCandidates(int limit, List<List<KnowledgeChunk>> candidateLists) {
+        Map<Long, KnowledgeChunk> merged = new LinkedHashMap<>();
+        int index = 0;
+        boolean hasMore;
+        do {
+            hasMore = false;
+            for (List<KnowledgeChunk> candidates : candidateLists) {
+                if (candidates == null || index >= candidates.size()) {
+                    continue;
+                }
+                hasMore = true;
+                KnowledgeChunk chunk = candidates.get(index);
+                if (merged.putIfAbsent(chunk.getId(), chunk) == null) {
+                    if (merged.size() >= limit) {
+                        return new ArrayList<>(merged.values());
+                    }
+                }
+            }
+            index++;
+        } while (hasMore);
+        return new ArrayList<>(merged.values());
+    }
+
+    private List<KnowledgeChunk> rerankAndDiversify(List<KnowledgeChunk> candidates, String question) {
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+        List<String> terms = searchTerms(question);
+        Map<Long, Integer> originalRank = new HashMap<>();
+        Map<Long, KnowledgeChunk> unique = new LinkedHashMap<>();
+        for (int i = 0; i < candidates.size(); i++) {
+            KnowledgeChunk chunk = candidates.get(i);
+            unique.putIfAbsent(chunk.getId(), chunk);
+            originalRank.putIfAbsent(chunk.getId(), i);
+        }
+        List<KnowledgeChunk> reranked = unique.values().stream()
+                .sorted(Comparator
+                        .comparingDouble((KnowledgeChunk chunk) -> rerankScore(chunk, terms, originalRank.getOrDefault(chunk.getId(), MAX_RERANK_CANDIDATES)))
+                        .reversed()
+                        .thenComparingInt(chunk -> originalRank.getOrDefault(chunk.getId(), MAX_RERANK_CANDIDATES)))
+                .toList();
+        return diversifyChunks(reranked, MAX_RETRIEVED_CHUNKS);
+    }
+
+    private double rerankScore(KnowledgeChunk chunk, List<String> terms, int originalRank) {
+        String content = chunk.getContent() == null ? "" : chunk.getContent();
+        String lowerContent = content.toLowerCase(Locale.ROOT);
+        String fileName = chunk.getFile().getOriginalName() == null ? "" : chunk.getFile().getOriginalName().toLowerCase(Locale.ROOT);
+        double result = score(content, terms) * 2.0;
+        for (String term : terms) {
+            if (term.length() < 2) {
+                continue;
+            }
+            int contentIndex = lowerContent.indexOf(term.toLowerCase(Locale.ROOT));
+            if (contentIndex >= 0) {
+                result += Math.max(1.0, 12.0 - Math.min(10.0, contentIndex / 180.0));
+            }
+            if (term.length() >= 3 && fileName.contains(term.toLowerCase(Locale.ROOT))) {
+                result += 4.0;
+            }
+        }
+        result += Math.max(0, MAX_RERANK_CANDIDATES - originalRank) * 0.15;
+        result += Math.min(4.0, content.length() / 220.0);
+        return result;
+    }
+
+    private List<KnowledgeChunk> diversifyChunks(List<KnowledgeChunk> ranked, int limit) {
         List<KnowledgeChunk> selected = new ArrayList<>();
         Set<Long> selectedChunkIds = new HashSet<>();
         Map<Long, Integer> byFile = new LinkedHashMap<>();
@@ -325,7 +464,7 @@ public class ChatService {
                 selected.add(chunk);
                 byFile.put(fileId, 1);
             }
-            if (selected.size() >= MAX_RETRIEVED_CHUNKS) {
+            if (selected.size() >= limit) {
                 return selected;
             }
         }
@@ -337,7 +476,7 @@ public class ChatService {
                 selected.add(chunk);
                 byFile.put(fileId, count + 1);
             }
-            if (selected.size() >= MAX_RETRIEVED_CHUNKS) {
+            if (selected.size() >= limit) {
                 return selected;
             }
         }
@@ -346,7 +485,7 @@ public class ChatService {
             if (selectedChunkIds.add(chunk.getId())) {
                 selected.add(chunk);
             }
-            if (selected.size() >= MAX_RETRIEVED_CHUNKS) {
+            if (selected.size() >= limit) {
                 return selected;
             }
         }
@@ -368,6 +507,37 @@ public class ChatService {
             }
         } while (changed);
         return new ArrayList<>(scope);
+    }
+
+    private String buildDeepSearchQuery(String question, com.example.exam.dto.AiSettingsDtos.AiSettingsResponse settings) {
+        if (!hasChatApiKey(settings) || question == null || question.isBlank()) {
+            return "";
+        }
+        String prompt = """
+                请把下面的用户问题改写成一行适合知识库检索的查询语句。
+                要求：保留关键概念、同义表达、可能出现的教材术语；不要回答问题；不要编号；不要超过 80 个汉字。
+
+                用户问题：
+                %s
+                """.formatted(question);
+        String rewritten = callModel(settings, prompt, QUERY_REWRITE_MAX_TOKENS, 0.1);
+        if (rewritten == null || rewritten.isBlank()) {
+            return "";
+        }
+        String cleaned = rewritten
+                .replaceAll("(?m)^\\s*[-*\\d.、)）]+\\s*", "")
+                .replaceAll("[`\"“”]", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+        return cleaned.length() > 240 ? cleaned.substring(0, 240) : cleaned;
+    }
+
+    private boolean sameQuery(String left, String right) {
+        return normalizeQuery(left).equals(normalizeQuery(right));
+    }
+
+    private String normalizeQuery(String value) {
+        return value == null ? "" : value.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
     }
 
     private List<String> searchTerms(String question) {
@@ -397,6 +567,41 @@ public class ChatService {
             }
         }
         return score;
+    }
+
+    private String buildDirectPrompt(QuestionMode mode, String question, String aiRole, String systemPrompt) {
+        String role = aiRole == null || aiRole.isBlank() ? "严谨的考研答疑老师" : aiRole.trim();
+        String customInstruction = systemPrompt == null || systemPrompt.isBlank()
+                ? "回答要清晰、分点、有结论；不确定时说明不确定，不要编造。"
+                : systemPrompt.trim();
+        if (mode == QuestionMode.TEACHER) {
+            return """
+                    角色：
+                    %s
+
+                    补充要求：
+                    %s
+
+                    用户已选择不引用知识库。请直接作为考研复习老师和用户互动：可以解释概念、追问薄弱点，或围绕用户输入提出 1 个循序渐进的问题。
+                    不要输出资料引用编号。
+
+                    用户输入：
+                    %s
+                    """.formatted(role, customInstruction, question);
+        }
+        return """
+                角色：
+                %s
+
+                补充要求：
+                %s
+
+                用户已选择不引用知识库。请直接基于你的通用能力回答用户问题，用简体中文，结构清晰；如果不确定，请明确说明不确定。
+                不要输出资料引用编号。
+
+                用户问题：
+                %s
+                """.formatted(role, customInstruction, question);
     }
 
     private String buildPrompt(QuestionMode mode, String question, List<KnowledgeChunk> chunks, String aiRole, String systemPrompt, boolean withCitations) {
@@ -503,6 +708,13 @@ public class ChatService {
     }
 
     private String callModel(com.example.exam.dto.AiSettingsDtos.AiSettingsResponse settings, String prompt) {
+        return callModel(settings, prompt, DEFAULT_CHAT_MAX_TOKENS, 0.2);
+    }
+
+    private String callModel(com.example.exam.dto.AiSettingsDtos.AiSettingsResponse settings,
+                             String prompt,
+                             int maxTokens,
+                             double temperature) {
         if (!hasChatApiKey(settings)) {
             return null;
         }
@@ -511,8 +723,8 @@ public class ChatService {
             Map<String, Object> payload = Map.of(
                     "model", settings.chatModel() == null || settings.chatModel().isBlank() ? "gpt-4o-mini" : settings.chatModel(),
                     "messages", List.of(Map.of("role", "user", "content", prompt)),
-                    "temperature", 0.2,
-                    "max_tokens", 600
+                    "temperature", temperature,
+                    "max_tokens", maxTokens
             );
             HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(endpoint))
                     .timeout(CHAT_TIMEOUT)
@@ -531,7 +743,10 @@ public class ChatService {
         return null;
     }
 
-    private String callModelStream(com.example.exam.dto.AiSettingsDtos.AiSettingsResponse settings, String prompt, Consumer<String> onDelta) {
+    private String callModelStream(com.example.exam.dto.AiSettingsDtos.AiSettingsResponse settings,
+                                   String prompt,
+                                   int maxTokens,
+                                   Consumer<String> onDelta) {
         if (!hasChatApiKey(settings)) {
             return null;
         }
@@ -541,7 +756,7 @@ public class ChatService {
                     "model", settings.chatModel() == null || settings.chatModel().isBlank() ? "gpt-4o-mini" : settings.chatModel(),
                     "messages", List.of(Map.of("role", "user", "content", prompt)),
                     "temperature", 0.2,
-                    "max_tokens", 600,
+                    "max_tokens", maxTokens,
                     "stream", true
             );
             HttpRequest httpRequest = HttpRequest.newBuilder(URI.create(endpoint))
@@ -605,6 +820,13 @@ public class ChatService {
             return value + "/chat/completions";
         }
         return value;
+    }
+
+    private String localDirectAnswer(boolean modelConfigured) {
+        if (modelConfigured) {
+            return "大模型接口暂时没有返回有效内容，请检查 API Key、模型名和 Endpoint。当前已关闭知识库检索，因此无法使用本地知识库兜底回答。";
+        }
+        return "当前未配置答题 API Key，无法直接和大模型聊天。你可以先配置模型服务，或重新开启“使用知识库”来使用本地检索兜底回答。";
     }
 
     private String localAnswer(QuestionMode mode, List<KnowledgeChunk> chunks, boolean modelConfigured, boolean withCitations) {

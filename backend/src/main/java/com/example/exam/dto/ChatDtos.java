@@ -7,7 +7,7 @@ import java.util.List;
 
 public class ChatDtos {
     public record ChatRequest(
-            @NotNull Long folderId,
+            Long folderId,
             @NotNull QuestionMode mode,
             @NotBlank String question,
             String model,
@@ -22,7 +22,9 @@ public class ChatDtos {
             String embeddingEndpoint,
             String embeddingApiKey,
             Integer embeddingDimensions,
-            Boolean withCitations
+            Boolean withCitations,
+            Boolean deepAnswer,
+            Boolean useKnowledgeBase
     ) {
     }
 

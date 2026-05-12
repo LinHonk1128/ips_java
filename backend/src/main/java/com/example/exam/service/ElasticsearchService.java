@@ -28,6 +28,7 @@ import org.springframework.stereotype.Service;
 public class ElasticsearchService {
     private static final Logger log = LoggerFactory.getLogger(ElasticsearchService.class);
     private static final int CANDIDATE_SIZE = 20;
+    private static final int FUSED_RESULT_SIZE = 20;
     private static final int RRF_K = 60;
     private static final Duration ES_REQUEST_TIMEOUT = Duration.ofSeconds(2);
     private static final long FAILURE_BACKOFF_MILLIS = Duration.ofSeconds(30).toMillis();
@@ -193,7 +194,7 @@ public class ElasticsearchService {
         return scores.entrySet().stream()
                 .sorted(Map.Entry.<Long, Double>comparingByValue(Comparator.reverseOrder()))
                 .map(Map.Entry::getKey)
-                .limit(8)
+                .limit(FUSED_RESULT_SIZE)
                 .toList();
     }
 
