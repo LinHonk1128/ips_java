@@ -49,7 +49,7 @@
             v-for="item in navItems"
             :key="item.key"
             :class="{ active: activePage === item.key }"
-            @click="activePage = item.key"
+            @click="setActivePage(item.key)"
           >
             <component :is="item.icon" :size="18" />
             <span>{{ item.label }}</span>
@@ -253,6 +253,298 @@
             </button>
             <button class="secondary-btn slim" type="button" @click="cancelMoveFile">取消</button>
           </form>
+        </section>
+
+        <section v-else-if="activePage === 'planner'" class="page-panel planner-page">
+          <div v-if="!planModule" class="planner-module-landing">
+            <button class="mistake-module-card" type="button" @click="openPlanModule('manual')">
+              <CalendarDays :size="34" />
+              <strong>自我规划</strong>
+              <span>像课程表一样手动安排学习、复盘、考试和休息，并支持撤回修改。</span>
+            </button>
+            <button class="mistake-module-card" type="button" @click="openPlanModule('ai')">
+              <Sparkles :size="34" />
+              <strong>AI 规划</strong>
+              <span>和大模型多轮讨论，按周保存草稿，确认后再写入真实日程。</span>
+            </button>
+          </div>
+
+          <template v-if="planModule === 'manual'">
+          <div class="planner-toolbar">
+            <div class="planner-week-switch">
+              <button class="secondary-btn slim" type="button" @click="shiftPlanWeek(-1)">
+                <ChevronRight class="flip-x" :size="16" />
+                上周
+              </button>
+              <button class="secondary-btn slim" type="button" @click="goCurrentPlanWeek">本周</button>
+              <button class="secondary-btn slim" type="button" @click="shiftPlanWeek(1)">
+                下周
+                <ChevronRight :size="16" />
+              </button>
+            </div>
+            <strong>{{ planWeekLabel }}</strong>
+            <div class="planner-stats">
+              <span>共 {{ planStats.total }} 项</span>
+              <span>完成 {{ planStats.done }} 项</span>
+              <span>高优先级 {{ planStats.high }} 项</span>
+              <button class="secondary-btn slim" type="button" :disabled="!planUndoStack.length || planUndoLoading" @click="undoStudyPlanChange">
+                <Undo2 :size="16" />
+                撤回
+              </button>
+              <button class="primary-btn compact" type="button" @click="openPlannerAiPage">
+                <Sparkles :size="17" />
+                AI 规划
+              </button>
+            </div>
+          </div>
+
+          <div class="planner-layout">
+            <section class="planner-board" aria-label="周学习课程表">
+              <article
+                v-for="day in planWeekDays"
+                :key="day.iso"
+                class="planner-day"
+                :class="{ today: isToday(day.iso) }"
+              >
+                <header>
+                  <div>
+                    <span>{{ day.weekday }}</span>
+                    <strong>{{ day.monthDay }}</strong>
+                  </div>
+                  <button class="icon-btn mini" type="button" title="新增规划" @click="openNewStudyPlan(day.iso)">
+                    <CalendarPlus :size="15" />
+                  </button>
+                </header>
+                <div class="planner-day-list">
+                  <button
+                    v-for="item in studyPlanItemsByDate[day.iso]"
+                    :key="item.id"
+                    class="plan-block"
+                    :class="[`type-${item.itemType}`, `priority-${item.priority}`, { done: item.status === 'DONE' }]"
+                    type="button"
+                    @click="editStudyPlan(item)"
+                  >
+                    <time>{{ normalizeTimeValue(item.startTime) }} - {{ normalizeTimeValue(item.endTime) }}</time>
+                    <strong>{{ item.title }}</strong>
+                    <span>{{ item.subject || planTypeLabel(item.itemType) }}</span>
+                  </button>
+                  <div v-if="!studyPlanItemsByDate[day.iso]?.length" class="planner-empty-slot">空档</div>
+                </div>
+              </article>
+            </section>
+
+            <aside class="planner-side">
+              <form class="planner-form" @submit.prevent="saveStudyPlanItem">
+                <div class="section-head split">
+                  <div>
+                    <h3>{{ editingPlanItem ? '修改规划' : '手动安排' }}</h3>
+                    <p>{{ editingPlanItem ? `正在修改 #${editingPlanItem.id}` : '新增课程、自习、复盘或休息块。' }}</p>
+                  </div>
+                  <button v-if="editingPlanItem" class="secondary-btn slim" type="button" @click="resetPlanForm(planForm.startDate)">取消</button>
+                </div>
+
+                <label>
+                  标题
+                  <input v-model="planForm.title" maxlength="120" required placeholder="如：数学强化刷题" />
+                </label>
+                <div class="planner-form-grid">
+                  <label>
+                    科目
+                    <input v-model="planForm.subject" maxlength="120" placeholder="数学 / 英语 / 专业课" />
+                  </label>
+                  <label>
+                    类型
+                    <select v-model="planForm.itemType">
+                      <option value="COURSE">课程</option>
+                      <option value="SELF_STUDY">自习</option>
+                      <option value="REVIEW">复盘</option>
+                      <option value="EXAM">考试</option>
+                      <option value="TASK">任务</option>
+                      <option value="REST">休息</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="planner-form-grid three">
+                  <label>
+                    日期
+                    <input v-model="planForm.startDate" type="date" required />
+                  </label>
+                  <label>
+                    开始
+                    <input v-model="planForm.startTime" type="time" required />
+                  </label>
+                  <label>
+                    结束
+                    <input v-model="planForm.endTime" type="time" required />
+                  </label>
+                </div>
+                <div class="planner-form-grid">
+                  <label>
+                    优先级
+                    <select v-model="planForm.priority">
+                      <option value="LOW">低</option>
+                      <option value="MEDIUM">中</option>
+                      <option value="HIGH">高</option>
+                    </select>
+                  </label>
+                  <label>
+                    状态
+                    <select v-model="planForm.status">
+                      <option value="TODO">待完成</option>
+                      <option value="DONE">已完成</option>
+                      <option value="SKIPPED">已跳过</option>
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  地点
+                  <input v-model="planForm.location" maxlength="120" placeholder="教室 / 图书馆 / 自习室" />
+                </label>
+                <label>
+                  说明
+                  <textarea v-model="planForm.description" class="planner-note" maxlength="800" placeholder="学习内容、目标或注意事项" />
+                </label>
+                <div class="planner-form-actions">
+                  <button class="primary-btn compact" type="submit" :disabled="loading">
+                    <Save :size="17" />
+                    {{ editingPlanItem ? '保存修改' : '加入规划' }}
+                  </button>
+                  <button v-if="editingPlanItem" class="secondary-btn slim" type="button" @click="toggleStudyPlanDone(editingPlanItem)">
+                    {{ editingPlanItem.status === 'DONE' ? '标为待完成' : '标为完成' }}
+                  </button>
+                  <button v-if="editingPlanItem" class="icon-btn mini danger" type="button" title="删除规划" @click="deleteStudyPlanItem(editingPlanItem)">
+                    <Trash2 :size="15" />
+                  </button>
+                </div>
+              </form>
+            </aside>
+          </div>
+          </template>
+
+          <template v-if="planModule === 'ai'">
+          <div class="planner-toolbar">
+            <div class="planner-week-switch">
+              <button class="secondary-btn slim" type="button" @click="shiftPlanWeek(-1)">
+                <ChevronRight class="flip-x" :size="16" />
+                上周
+              </button>
+              <button class="secondary-btn slim" type="button" @click="goCurrentPlanWeek">本周</button>
+              <button class="secondary-btn slim" type="button" @click="shiftPlanWeek(1)">
+                下周
+                <ChevronRight :size="16" />
+              </button>
+            </div>
+            <strong>{{ planWeekLabel }}</strong>
+            <div class="planner-stats">
+              <span>草稿 {{ planDraftStats.total }} 项</span>
+              <span>新增 {{ planDraftStats.created }} 项</span>
+              <span>待保存 {{ planDraftDirty ? '是' : '否' }}</span>
+              <button class="secondary-btn slim" type="button" :disabled="!planUndoStack.length || planUndoLoading" @click="undoStudyPlanChange">
+                <Undo2 :size="16" />
+                撤回
+              </button>
+              <button class="secondary-btn slim" type="button" @click="planModule = 'manual'">
+                <CalendarDays :size="16" />
+                自我规划
+              </button>
+            </div>
+          </div>
+
+          <div class="planner-ai-layout">
+            <section class="planner-ai-panel large">
+              <div class="section-head split">
+                <div>
+                  <h3>AI 时间规划</h3>
+                  <p>{{ aiSettings.chatModel }} · {{ aiSettings.chatApiKey ? '已连接模型' : '未配置 Key' }}</p>
+                </div>
+                <div class="planner-ai-actions">
+                  <button class="secondary-btn slim" type="button" @click="activePage = 'settings'">
+                    <Settings :size="16" />
+                    设置
+                  </button>
+                  <button class="secondary-btn slim danger-text" type="button" @click="clearPlanAiChat">
+                    <Trash2 :size="16" />
+                    清空聊天
+                  </button>
+                </div>
+              </div>
+
+              <div class="planner-ai-log tall">
+                <article v-for="(message, index) in planAiMessages" :key="index" :class="['message', message.role]">
+                  <div class="message-content">{{ message.content }}</div>
+                </article>
+                <article v-if="planAiLoading || planGenerateLoading || planSaveLoading" class="message assistant pending-message">
+                  <LoaderCircle :size="18" />
+                  <span>{{ planSaveLoading ? '正在保存草稿规划…' : planGenerateLoading ? '正在更新草稿预览…' : '正在分析当前规划…' }}</span>
+                </article>
+              </div>
+
+              <form class="planner-ai-box" @submit.prevent="sendPlanAiMessage">
+                <textarea
+                  v-model="planAiInput"
+                  :disabled="planAiLoading || planGenerateLoading || planSaveLoading"
+                  placeholder="例如：我晚上效率高，帮我把数学和专业课错开安排。发送后会直接更新右侧草稿预览。"
+                />
+                <div class="planner-ai-actions">
+                  <button class="secondary-btn slim" type="submit" :disabled="planAiLoading || planGenerateLoading || planSaveLoading || !planAiInput.trim()">
+                    <Send :size="16" />
+                    发送并预览
+                  </button>
+                  <button class="primary-btn compact" type="button" :disabled="!planDraftDirty || planSaveLoading || planGenerateLoading || planAiLoading" @click="savePlanAiDraft">
+                    <Save :size="17" />
+                    保存到日程
+                  </button>
+                </div>
+              </form>
+            </section>
+
+            <aside class="planner-draft-panel">
+              <div class="section-head split">
+                <div>
+                  <h3>草稿缩略图</h3>
+                  <p>这里只能查看预览，不会直接修改真实日程。</p>
+                </div>
+                <button class="secondary-btn slim" type="button" :disabled="!planDraftDirty" @click="resetPlanDraft">
+                  <RotateCcw :size="16" />
+                  重置草稿
+                </button>
+              </div>
+              <section class="planner-mini-board" aria-label="AI 草稿日程预览">
+                <article
+                  v-for="day in planWeekDays"
+                  :key="day.iso"
+                  class="planner-mini-day"
+                  :class="{ today: isToday(day.iso) }"
+                >
+                  <header>
+                    <span>{{ day.weekday }}</span>
+                    <strong>{{ day.monthDay }}</strong>
+                  </header>
+                  <div class="planner-mini-list">
+                    <div
+                      v-for="item in planDraftItemsByDate[day.iso]"
+                      :key="item.id"
+                      class="plan-mini-block"
+                      :class="[`type-${item.itemType}`, `priority-${item.priority}`, { draft: item.id < 0, done: item.status === 'DONE' }]"
+                    >
+                      <time>{{ normalizeTimeValue(item.startTime) }}-{{ normalizeTimeValue(item.endTime) }}</time>
+                      <strong>{{ item.title }}</strong>
+                      <span>{{ item.subject || planTypeLabel(item.itemType) }}</span>
+                    </div>
+                    <div v-if="!planDraftItemsByDate[day.iso]?.length" class="planner-mini-empty">空档</div>
+                  </div>
+                </article>
+              </section>
+
+              <div v-if="planLastOperations.length" class="planner-ops">
+                <strong>草稿操作</strong>
+                <span v-for="operation in planLastOperations" :key="`${operation.operation}-${operation.id}-${operation.title}`">
+                  {{ operation.operation }} · {{ operation.title || operation.id }} · {{ operation.detail }}
+                </span>
+              </div>
+            </aside>
+          </div>
+          </template>
         </section>
 
         <section v-else-if="activePage === 'chat'" class="page-panel chat-page">
@@ -1145,6 +1437,8 @@ import {
   Bold,
   BookOpenCheck,
   Bot,
+  CalendarDays,
+  CalendarPlus,
   ChevronRight,
   ClipboardCopy,
   Clock,
@@ -1174,14 +1468,16 @@ import {
   ScanText,
   Send,
   Settings,
+  Sparkles,
   Table2,
   Tag,
   Timer,
   Trash2,
   Underline,
+  Undo2,
   Upload
 } from 'lucide-vue-next'
-import { aiSettingsApi, authApi, chatApi, clearSession, fileApi, folderApi, getSession, getToken, mistakeApi, setSession } from './api/client'
+import { aiSettingsApi, authApi, chatApi, clearSession, fileApi, folderApi, getSession, getToken, mistakeApi, setSession, studyPlanApi } from './api/client'
 
 const session = ref(getSession())
 const authMode = ref('login')
@@ -1217,6 +1513,33 @@ const fileNameInput = ref(null)
 const moveFileTargetId = ref('')
 const rootFolderCollapsed = ref(false)
 const collapsedFolderIds = ref(new Set())
+const studyPlanItems = ref([])
+const planDraftItems = ref([])
+const planSessionByWeek = ref({})
+const planModule = ref('')
+const planWeekStart = ref(startOfWeekIso(new Date()))
+const editingPlanItem = ref(null)
+const planAiMessages = ref(initialPlanAiMessages())
+const planAiInput = ref('')
+const planAiLoading = ref(false)
+const planGenerateLoading = ref(false)
+const planSaveLoading = ref(false)
+const planUndoLoading = ref(false)
+const planLastOperations = ref([])
+const planPendingOperations = ref([])
+const planUndoStack = ref([])
+const planForm = reactive({
+  title: '',
+  subject: '',
+  description: '',
+  itemType: 'SELF_STUDY',
+  startDate: toDateInputValue(new Date()),
+  startTime: '19:00',
+  endTime: '21:00',
+  location: '',
+  priority: 'MEDIUM',
+  status: 'TODO'
+})
 const mistakes = ref([])
 const mistakeStatuses = ref([])
 const mistakeSubjectTags = ref([])
@@ -1277,6 +1600,7 @@ const chatHistoryRetentionMs = 24 * 60 * 60 * 1000
 
 const navItems = [
   { key: 'library', label: '我的资料', icon: Library },
+  { key: 'planner', label: '学习规划', icon: CalendarDays },
   { key: 'chat', label: '知识问答', icon: MessageSquare },
   { key: 'editor', label: '上传编辑', icon: ScanText },
   { key: 'mistakes', label: '错题集', icon: BookOpenCheck },
@@ -1287,6 +1611,10 @@ const pageMeta = {
   library: {
     title: '我的资料',
     description: '创建资料文件夹，查看当前文件夹中的文件，保持知识库结构清晰。'
+  },
+  planner: {
+    title: '学习规划',
+    description: '选择自我规划或 AI 规划：一个用于手动课程表，一个用于多轮讨论和草稿预览。'
   },
   chat: {
     title: '知识问答',
@@ -1404,6 +1732,107 @@ const practiceClock = computed(() => {
   const seconds = practiceRemainingSeconds.value % 60
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 })
+const planWeekDays = computed(() => {
+  const start = parseDateInput(planWeekStart.value)
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = addDays(start, index)
+    const iso = toDateInputValue(date)
+    return {
+      iso,
+      weekday: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][index],
+      monthDay: `${date.getMonth() + 1}/${date.getDate()}`
+    }
+  })
+})
+const planWeekEnd = computed(() => planWeekDays.value.at(-1)?.iso || planWeekStart.value)
+const planWeekLabel = computed(() => `${formatShortDate(planWeekStart.value)} - ${formatShortDate(planWeekEnd.value)}`)
+const studyPlanItemsByDate = computed(() => groupPlanItemsByDate(studyPlanItems.value))
+const planDraftItemsByDate = computed(() => groupPlanItemsByDate(planDraftItems.value))
+const planDraftDirty = computed(() => planPendingOperations.value.length > 0)
+const planDraftStats = computed(() => {
+  const total = planDraftItems.value.length
+  const created = planDraftItems.value.filter((item) => item.id < 0).length
+  return { total, created }
+})
+const planStats = computed(() => {
+  const total = studyPlanItems.value.length
+  const done = studyPlanItems.value.filter((item) => item.status === 'DONE').length
+  const high = studyPlanItems.value.filter((item) => item.priority === 'HIGH').length
+  return { total, done, high }
+})
+
+function groupPlanItemsByDate(items) {
+  const grouped = {}
+  planWeekDays.value.forEach((day) => {
+    grouped[day.iso] = []
+  })
+  items.forEach((item) => {
+    if (!grouped[item.startDate]) grouped[item.startDate] = []
+    grouped[item.startDate].push(item)
+  })
+  Object.values(grouped).forEach((items) => {
+    items.sort((left, right) => `${left.startTime}`.localeCompare(`${right.startTime}`))
+  })
+  return grouped
+}
+
+function toDateInputValue(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function parseDateInput(value) {
+  const [year, month, day] = String(value).split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
+function addDays(date, days) {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
+function startOfWeekIso(date) {
+  const base = new Date(date)
+  const day = base.getDay()
+  const offset = day === 0 ? -6 : 1 - day
+  base.setDate(base.getDate() + offset)
+  return toDateInputValue(base)
+}
+
+function formatShortDate(value) {
+  const date = parseDateInput(value)
+  return `${date.getMonth() + 1}月${date.getDate()}日`
+}
+
+function isToday(value) {
+  return value === toDateInputValue(new Date())
+}
+
+function normalizeTimeValue(value) {
+  return String(value || '').slice(0, 5)
+}
+
+function planTypeLabel(type) {
+  return {
+    COURSE: '课程',
+    SELF_STUDY: '自习',
+    REVIEW: '复盘',
+    EXAM: '考试',
+    TASK: '任务',
+    REST: '休息'
+  }[type] || '自习'
+}
+
+function planPriorityLabel(priority) {
+  return { LOW: '低', MEDIUM: '中', HIGH: '高' }[priority] || '中'
+}
+
+function planStatusLabel(status) {
+  return { TODO: '待完成', DONE: '已完成', SKIPPED: '已跳过' }[status] || '待完成'
+}
 
 function folderChatHistoryKey(folderId) {
   const userKey = session.value?.userId || session.value?.username || 'guest'
@@ -1567,11 +1996,22 @@ function formatHistoryTime(value) {
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
+function setActivePage(page) {
+  if (activePage.value === 'planner') {
+    persistPlanSession()
+  }
+  activePage.value = page
+  if (page === 'planner') {
+    planModule.value = ''
+  }
+}
+
 onMounted(() => {
   if (session.value) {
     loadFolders()
     loadRemoteAiSettings()
     loadMistakeData()
+    loadStudyPlan()
   }
 })
 
@@ -1584,7 +2024,356 @@ async function submitAuth() {
     await loadFolders()
     await loadRemoteAiSettings()
     await loadMistakeData()
+    await loadStudyPlan()
   })
+}
+
+async function loadStudyPlan() {
+  await run(async () => {
+    studyPlanItems.value = await studyPlanApi.list(planWeekStart.value, planWeekEnd.value)
+    restorePlanSession()
+  })
+}
+
+function clonePlanItems(items = studyPlanItems.value) {
+  return items.map((item) => ({ ...item }))
+}
+
+function clonePlanOperations(items) {
+  return (items || []).map((item) => ({ ...item }))
+}
+
+function currentPlanSessionKey() {
+  const userKey = session.value?.userId || session.value?.username || 'guest'
+  return `${userKey}:${planWeekStart.value}`
+}
+
+function persistPlanSession() {
+  if (!session.value) return
+  const key = currentPlanSessionKey()
+  planSessionByWeek.value = {
+    ...planSessionByWeek.value,
+    [key]: {
+      draftItems: clonePlanItems(planDraftItems.value),
+      pendingOperations: clonePlanOperations(planPendingOperations.value),
+      lastOperations: clonePlanOperations(planLastOperations.value),
+      messages: planAiMessages.value.map((message) => ({ ...message })),
+      input: planAiInput.value
+    }
+  }
+}
+
+function restorePlanSession() {
+  const saved = planSessionByWeek.value[currentPlanSessionKey()]
+  if (!saved) {
+    planDraftItems.value = clonePlanItems(studyPlanItems.value)
+    planPendingOperations.value = []
+    planLastOperations.value = []
+    planAiMessages.value = initialPlanAiMessages()
+    planAiInput.value = ''
+    persistPlanSession()
+    return
+  }
+  planPendingOperations.value = clonePlanOperations(saved.pendingOperations)
+  planLastOperations.value = clonePlanOperations(saved.lastOperations)
+  planAiMessages.value = saved.messages?.length ? saved.messages.map((message) => ({ ...message })) : initialPlanAiMessages()
+  planAiInput.value = saved.input || ''
+  planDraftItems.value = planPendingOperations.value.length
+    ? clonePlanItems(saved.draftItems)
+    : clonePlanItems(studyPlanItems.value)
+}
+
+function syncPlanDraftFromReal() {
+  planDraftItems.value = clonePlanItems(studyPlanItems.value)
+  planPendingOperations.value = []
+  planLastOperations.value = []
+  persistPlanSession()
+}
+
+function resetPlanDraft() {
+  syncPlanDraftFromReal()
+  planAiMessages.value.push({ role: 'assistant', content: '草稿已恢复为当前真实日程。' })
+  persistPlanSession()
+}
+
+function pushPlanUndoSnapshot(label) {
+  planUndoStack.value = [
+    { id: crypto.randomUUID(), label, items: clonePlanItems(studyPlanItems.value), createdAt: Date.now() },
+    ...planUndoStack.value
+  ].slice(0, 8)
+}
+
+async function undoStudyPlanChange() {
+  const snapshot = planUndoStack.value[0]
+  if (!snapshot || planUndoLoading.value) return
+  planUndoLoading.value = true
+  error.value = ''
+  try {
+    await restoreStudyPlanSnapshot(snapshot.items)
+    planUndoStack.value = planUndoStack.value.slice(1)
+    await loadStudyPlan()
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    planUndoLoading.value = false
+  }
+}
+
+async function restoreStudyPlanSnapshot(snapshotItems) {
+  const currentItems = await studyPlanApi.list(planWeekStart.value, planWeekEnd.value)
+  const snapshotById = new Map(snapshotItems.filter((item) => item.id > 0).map((item) => [item.id, item]))
+  const currentById = new Map(currentItems.filter((item) => item.id > 0).map((item) => [item.id, item]))
+
+  for (const item of currentItems) {
+    if (item.id > 0 && !snapshotById.has(item.id)) {
+      await studyPlanApi.delete(item.id)
+    }
+  }
+  for (const item of snapshotItems) {
+    const payload = studyPlanPayloadFromItem(item)
+    if (item.id > 0 && currentById.has(item.id)) {
+      await studyPlanApi.update(item.id, payload)
+    } else {
+      await studyPlanApi.create(payload)
+    }
+  }
+}
+
+async function shiftPlanWeek(delta) {
+  persistPlanSession()
+  planWeekStart.value = toDateInputValue(addDays(parseDateInput(planWeekStart.value), delta * 7))
+  await loadStudyPlan()
+}
+
+async function goCurrentPlanWeek() {
+  persistPlanSession()
+  planWeekStart.value = startOfWeekIso(new Date())
+  await loadStudyPlan()
+}
+
+function openNewStudyPlan(date) {
+  editingPlanItem.value = null
+  resetPlanForm(date)
+}
+
+function openPlanModule(module) {
+  planModule.value = module
+  if (module === 'ai') {
+    restorePlanSession()
+  }
+}
+
+function openPlannerAiPage() {
+  openPlanModule('ai')
+}
+
+function editStudyPlan(item) {
+  editingPlanItem.value = item
+  Object.assign(planForm, {
+    title: item.title || '',
+    subject: item.subject || '',
+    description: item.description || '',
+    itemType: item.itemType || 'SELF_STUDY',
+    startDate: item.startDate,
+    startTime: normalizeTimeValue(item.startTime),
+    endTime: normalizeTimeValue(item.endTime),
+    location: item.location || '',
+    priority: item.priority || 'MEDIUM',
+    status: item.status || 'TODO'
+  })
+}
+
+function resetPlanForm(date = planForm.startDate || toDateInputValue(new Date())) {
+  editingPlanItem.value = null
+  Object.assign(planForm, {
+    title: '',
+    subject: '',
+    description: '',
+    itemType: 'SELF_STUDY',
+    startDate: date,
+    startTime: '19:00',
+    endTime: '21:00',
+    location: '',
+    priority: 'MEDIUM',
+    status: 'TODO'
+  })
+}
+
+function studyPlanPayloadFromForm() {
+  return {
+    title: planForm.title,
+    subject: planForm.subject,
+    description: planForm.description,
+    itemType: planForm.itemType,
+    startDate: planForm.startDate,
+    startTime: planForm.startTime,
+    endTime: planForm.endTime,
+    location: planForm.location,
+    priority: planForm.priority,
+    status: planForm.status
+  }
+}
+
+function studyPlanPayloadFromItem(item, patch = {}) {
+  return {
+    title: item.title,
+    subject: item.subject,
+    description: item.description,
+    itemType: item.itemType,
+    startDate: item.startDate,
+    startTime: normalizeTimeValue(item.startTime),
+    endTime: normalizeTimeValue(item.endTime),
+    location: item.location,
+    priority: item.priority,
+    status: item.status,
+    ...patch
+  }
+}
+
+async function saveStudyPlanItem() {
+  await run(async () => {
+    pushPlanUndoSnapshot(editingPlanItem.value ? '修改规划' : '新增规划')
+    if (editingPlanItem.value) {
+      await studyPlanApi.update(editingPlanItem.value.id, studyPlanPayloadFromForm())
+    } else {
+      await studyPlanApi.create(studyPlanPayloadFromForm())
+    }
+    await loadStudyPlan()
+    resetPlanForm(planForm.startDate)
+  })
+}
+
+async function deleteStudyPlanItem(item) {
+  if (!item || !window.confirm(`确定删除“${item.title}”吗？`)) return
+  await run(async () => {
+    pushPlanUndoSnapshot('删除规划')
+    await studyPlanApi.delete(item.id)
+    if (editingPlanItem.value?.id === item.id) resetPlanForm(item.startDate)
+    await loadStudyPlan()
+  })
+}
+
+async function toggleStudyPlanDone(item) {
+  const nextStatus = item.status === 'DONE' ? 'TODO' : 'DONE'
+  await run(async () => {
+    pushPlanUndoSnapshot(nextStatus === 'DONE' ? '标记完成' : '标记待完成')
+    await studyPlanApi.update(item.id, studyPlanPayloadFromItem(item, { status: nextStatus }))
+    await loadStudyPlan()
+  })
+}
+
+function compactPlanMessages() {
+  return planAiMessages.value
+    .filter((message) => message.role === 'user' || message.role === 'assistant')
+    .map(({ role, content }) => ({ role, content: compactPlanMessageContent(role, content) }))
+    .filter((message) => message.content?.trim())
+    .filter((message, index) => !(index === 0 && message.role === 'assistant'))
+}
+
+function compactPlanMessageContent(role, content) {
+  if (role !== 'assistant') return content
+  return String(content || '').replace(/\n\n当前只是草稿，保存后才会写入真实日程。$/, '').trim()
+}
+
+function planAiBasePayload() {
+  return {
+    ...aiSettings,
+    fromDate: planWeekStart.value,
+    toDate: planWeekEnd.value,
+    messages: compactPlanMessages()
+  }
+}
+
+function initialPlanAiMessages() {
+  return [{ role: 'assistant', content: '我会结合当前周规划帮你调整学习节奏。每次发送后都会直接更新右侧草稿，确认后再保存到真实日程。' }]
+}
+
+function clearPlanAiChat() {
+  planAiMessages.value = initialPlanAiMessages()
+  planAiInput.value = ''
+  syncPlanDraftFromReal()
+  persistPlanSession()
+}
+
+async function sendPlanAiMessage() {
+  const content = planAiInput.value.trim()
+  if (!content || planAiLoading.value || planGenerateLoading.value || planSaveLoading.value) return
+  planAiMessages.value.push({ role: 'user', content })
+  planAiInput.value = ''
+  await updateStudyPlanDraftFromAi('请根据用户最新消息直接更新当前周学习规划草稿。这里只预览，不要假设已经保存；如果信息不足或用户只是询问，请返回空 actions 并用 reply 简短说明。')
+}
+
+async function generateStudyPlanFromAi() {
+  const pending = planAiInput.value.trim()
+  if (pending) {
+    planAiMessages.value.push({ role: 'user', content: pending })
+    planAiInput.value = ''
+  }
+  await updateStudyPlanDraftFromAi('请生成当前周学习规划草稿。这里只预览，不要假设已经保存。')
+}
+
+async function updateStudyPlanDraftFromAi(instruction) {
+  if (planGenerateLoading.value || planSaveLoading.value) return
+  planGenerateLoading.value = true
+  error.value = ''
+  try {
+    const response = await studyPlanApi.generate({
+      ...planAiBasePayload(),
+      instruction
+    })
+    planDraftItems.value = response.items || clonePlanItems(studyPlanItems.value)
+    planLastOperations.value = response.operations || []
+    planPendingOperations.value = (response.operations || []).map(operationForApply)
+    const operationText = planLastOperations.value.length
+      ? `\n\n草稿操作：${planLastOperations.value.map((item) => `${item.operation} ${item.title || item.id || ''}（${item.detail}）`).join('；')}`
+      : ''
+    planAiMessages.value.push({ role: 'assistant', content: `${response.reply || '已更新草稿规划。'}${operationText}\n\n当前只是草稿，保存后才会写入真实日程。` })
+    persistPlanSession()
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    planGenerateLoading.value = false
+  }
+}
+
+function operationForApply(operation) {
+  return {
+    operation: operation.operation,
+    id: operation.id && operation.id > 0 ? operation.id : null,
+    title: operation.title,
+    subject: operation.subject,
+    description: operation.description,
+    itemType: operation.itemType,
+    startDate: operation.startDate,
+    startTime: operation.startTime ? normalizeTimeValue(operation.startTime) : null,
+    endTime: operation.endTime ? normalizeTimeValue(operation.endTime) : null,
+    location: operation.location,
+    priority: operation.priority,
+    status: operation.status
+  }
+}
+
+async function savePlanAiDraft() {
+  if (!planPendingOperations.value.length || planSaveLoading.value) return
+  planSaveLoading.value = true
+  error.value = ''
+  try {
+    pushPlanUndoSnapshot('保存 AI 草稿')
+    const response = await studyPlanApi.apply({
+      fromDate: planWeekStart.value,
+      toDate: planWeekEnd.value,
+      operations: planPendingOperations.value
+    })
+    studyPlanItems.value = response.items || []
+    syncPlanDraftFromReal()
+    planLastOperations.value = response.operations || []
+    planAiMessages.value.push({ role: 'assistant', content: response.reply || '草稿已保存到真实日程。' })
+    persistPlanSession()
+  } catch (err) {
+    error.value = err.message
+  } finally {
+    planSaveLoading.value = false
+  }
 }
 
 async function loadMistakeData() {
@@ -2906,6 +3695,17 @@ function logout() {
   activeFolder.value = null
   activeFile.value = null
   activeSource.value = null
+  studyPlanItems.value = []
+  planDraftItems.value = []
+  planSessionByWeek.value = {}
+  planModule.value = ''
+  planWeekStart.value = startOfWeekIso(new Date())
+  resetPlanForm(toDateInputValue(new Date()))
+  planAiMessages.value = initialPlanAiMessages()
+  planAiInput.value = ''
+  planLastOperations.value = []
+  planPendingOperations.value = []
+  planUndoStack.value = []
   folderChatHistories.value = []
   activeConversationIds.QA = null
   activeConversationIds.TEACHER = null

@@ -143,6 +143,22 @@ export const aiSettingsApi = {
   save: (payload) => api('/ai-settings', { method: 'PUT', body: JSON.stringify(payload) })
 }
 
+export const studyPlanApi = {
+  list: (from, to) => {
+    const params = new URLSearchParams()
+    if (from) params.set('from', from)
+    if (to) params.set('to', to)
+    const query = params.toString()
+    return api(`/study-plan${query ? `?${query}` : ''}`)
+  },
+  create: (payload) => api('/study-plan', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (itemId, payload) => api(`/study-plan/${itemId}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  delete: (itemId) => api(`/study-plan/${itemId}`, { method: 'DELETE' }),
+  chat: (payload) => api('/study-plan/ai/chat', { method: 'POST', body: JSON.stringify(payload) }),
+  generate: (payload) => api('/study-plan/ai/generate', { method: 'POST', body: JSON.stringify(payload) }),
+  apply: (payload) => api('/study-plan/ai/apply', { method: 'POST', body: JSON.stringify(payload) })
+}
+
 function appendOptionalFormValue(form, key, value) {
   if (value !== undefined && value !== null && value !== '') {
     form.append(key, value)
