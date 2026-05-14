@@ -116,7 +116,29 @@
 
         <p v-if="error" class="error-banner">{{ error }}</p>
 
-        <section v-if="activePage === 'library'" class="page-panel library-page">
+        <section v-if="activePage === 'knowledge' && !knowledgeModule" class="page-panel knowledge-page">
+          <div class="mistake-module-landing">
+            <div class="mistake-module-menu knowledge-module-menu">
+              <button class="mistake-module-card" type="button" @click="openKnowledgeModule('library')">
+                <Library :size="34" />
+                <strong>我的资料</strong>
+                <span>管理科目文件夹、资料文件和知识库收录状态。</span>
+              </button>
+              <button class="mistake-module-card" type="button" @click="openKnowledgeModule('chat')">
+                <MessageSquare :size="34" />
+                <strong>知识问答</strong>
+                <span>选择文件夹作为知识范围，进行资料溯源答疑或教师式追问。</span>
+              </button>
+              <button class="mistake-module-card" type="button" @click="openKnowledgeModule('editor')">
+                <ScanText :size="34" />
+                <strong>上传编辑</strong>
+                <span>上传 PDF、图片或文档，校正文本后保存为可检索知识。</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section v-else-if="activePage === 'library' || (activePage === 'knowledge' && knowledgeModule === 'library')" class="page-panel library-page">
           <div class="section-head split">
             <div>
               <h3>创建文件夹</h3>
@@ -193,7 +215,7 @@
               <h3>文件夹中的文件</h3>
               <p>{{ activeFolder ? '这里仅展示当前文件夹的文件。上传和编辑请进入“上传编辑”页面。' : '选择一个文件夹后查看文件列表。' }}</p>
             </div>
-            <button class="secondary-btn" :disabled="!activeFolder" @click="activePage = 'editor'">
+            <button class="secondary-btn" :disabled="!activeFolder" @click="openKnowledgeModule('editor')">
               <Upload :size="17" />
               去上传
             </button>
@@ -471,7 +493,7 @@
 
               <div class="planner-ai-log tall">
                 <article v-for="(message, index) in planAiMessages" :key="index" :class="['message', message.role]">
-                  <div class="message-content">{{ message.content }}</div>
+                  <div class="message-content">{{ displayPlanAiMessage(message) }}</div>
                 </article>
                 <article v-if="planAiLoading || planGenerateLoading || planSaveLoading" class="message assistant pending-message">
                   <LoaderCircle :size="18" />
@@ -547,7 +569,7 @@
           </template>
         </section>
 
-        <section v-else-if="activePage === 'chat'" class="page-panel chat-page">
+        <section v-else-if="activePage === 'chat' || (activePage === 'knowledge' && knowledgeModule === 'chat')" class="page-panel chat-page">
           <div class="qa-toolbar">
             <div class="mode-tabs">
               <button :class="{ active: chatForm.mode === 'QA' }" @click="setChatMode('QA')">答疑模式</button>
@@ -666,7 +688,7 @@
           </form>
         </section>
 
-        <section v-else-if="activePage === 'editor'" class="page-panel editor-page">
+        <section v-else-if="activePage === 'editor' || (activePage === 'knowledge' && knowledgeModule === 'editor')" class="page-panel editor-page">
           <form class="upload-strip" @submit.prevent="uploadFile">
             <select v-model="uploadTag" :disabled="!activeFolder">
               <option value="TEXTBOOK">教材</option>
@@ -1488,7 +1510,7 @@ const folders = ref([])
 const files = ref([])
 const activeFolder = ref(null)
 const activeFile = ref(null)
-const activePage = ref('library')
+const activePage = ref('knowledge')
 const uploadTag = ref('NOTE')
 const fileInput = ref(null)
 const editorElement = ref(null)
@@ -1517,6 +1539,7 @@ const studyPlanItems = ref([])
 const planDraftItems = ref([])
 const planSessionByWeek = ref({})
 const planModule = ref('')
+const knowledgeModule = ref('')
 const planWeekStart = ref(startOfWeekIso(new Date()))
 const editingPlanItem = ref(null)
 const planAiMessages = ref(initialPlanAiMessages())
@@ -1599,15 +1622,17 @@ const maxFolderDepth = 3
 const chatHistoryRetentionMs = 24 * 60 * 60 * 1000
 
 const navItems = [
-  { key: 'library', label: '我的资料', icon: Library },
+  { key: 'knowledge', label: '我的知识库', icon: Library },
   { key: 'planner', label: '学习规划', icon: CalendarDays },
-  { key: 'chat', label: '知识问答', icon: MessageSquare },
-  { key: 'editor', label: '上传编辑', icon: ScanText },
   { key: 'mistakes', label: '错题集', icon: BookOpenCheck },
   { key: 'settings', label: 'AI 设置', icon: Settings }
 ]
 
 const pageMeta = {
+  knowledge: {
+    title: '我的知识库',
+    description: '集中管理资料、上传编辑和知识问答。'
+  },
   library: {
     title: '我的资料',
     description: '创建资料文件夹，查看当前文件夹中的文件，保持知识库结构清晰。'
@@ -1634,8 +1659,20 @@ const pageMeta = {
   }
 }
 
-const pageTitle = computed(() => pageMeta[activePage.value].title)
-const pageDescription = computed(() => pageMeta[activePage.value].description)
+const knowledgeModuleMeta = {
+  library: pageMeta.library,
+  chat: pageMeta.chat,
+  editor: pageMeta.editor
+}
+
+const currentPageMeta = computed(() => {
+  if (activePage.value === 'knowledge' && knowledgeModule.value) {
+    return knowledgeModuleMeta[knowledgeModule.value] || pageMeta.knowledge
+  }
+  return pageMeta[activePage.value] || pageMeta.knowledge
+})
+const pageTitle = computed(() => currentPageMeta.value.title)
+const pageDescription = computed(() => currentPageMeta.value.description)
 const messages = computed(() => chatMessages[chatForm.mode])
 const currentChatHasMessages = computed(() => messages.value.length > 0)
 const chatInputDisabled = computed(() => chatLoading.value || (chatForm.useKnowledgeBase && !activeFolder.value))
@@ -2001,9 +2038,17 @@ function setActivePage(page) {
     persistPlanSession()
   }
   activePage.value = page
+  if (page === 'knowledge') {
+    knowledgeModule.value = ''
+  }
   if (page === 'planner') {
     planModule.value = ''
   }
+}
+
+function openKnowledgeModule(module) {
+  activePage.value = 'knowledge'
+  knowledgeModule.value = module
 }
 
 onMounted(() => {
@@ -2265,14 +2310,21 @@ async function toggleStudyPlanDone(item) {
 function compactPlanMessages() {
   return planAiMessages.value
     .filter((message) => message.role === 'user' || message.role === 'assistant')
-    .map(({ role, content }) => ({ role, content: compactPlanMessageContent(role, content) }))
+    .map(({ role, content }) => ({ role, content: cleanPlanAssistantContent(role, content) }))
     .filter((message) => message.content?.trim())
     .filter((message, index) => !(index === 0 && message.role === 'assistant'))
 }
 
-function compactPlanMessageContent(role, content) {
+function displayPlanAiMessage(message) {
+  return cleanPlanAssistantContent(message.role, message.content)
+}
+
+function cleanPlanAssistantContent(role, content) {
   if (role !== 'assistant') return content
-  return String(content || '').replace(/\n\n当前只是草稿，保存后才会写入真实日程。$/, '').trim()
+  return String(content || '')
+    .replace(/\n*\s*草稿操作：[\s\S]*$/u, '')
+    .replace(/\n*\s*当前只是草稿，保存后才会写入真实日程。$/u, '')
+    .trim()
 }
 
 function planAiBasePayload() {
@@ -2324,10 +2376,7 @@ async function updateStudyPlanDraftFromAi(instruction) {
     planDraftItems.value = response.items || clonePlanItems(studyPlanItems.value)
     planLastOperations.value = response.operations || []
     planPendingOperations.value = (response.operations || []).map(operationForApply)
-    const operationText = planLastOperations.value.length
-      ? `\n\n草稿操作：${planLastOperations.value.map((item) => `${item.operation} ${item.title || item.id || ''}（${item.detail}）`).join('；')}`
-      : ''
-    planAiMessages.value.push({ role: 'assistant', content: `${response.reply || '已更新草稿规划。'}${operationText}\n\n当前只是草稿，保存后才会写入真实日程。` })
+    planAiMessages.value.push({ role: 'assistant', content: response.reply || '已更新草稿规划。' })
     persistPlanSession()
   } catch (err) {
     error.value = err.message
@@ -2922,7 +2971,7 @@ async function moveFile() {
 function useCurrentFolderAsKnowledgeBase() {
   if (!activeFolder.value) return
   chatForm.useKnowledgeBase = true
-  activePage.value = 'chat'
+  openKnowledgeModule('chat')
   activeSource.value = null
 }
 
@@ -2947,7 +2996,7 @@ function selectFile(file) {
 function openFileInEditor(file) {
   cancelFileNameEdit()
   activeFile.value = { ...file }
-  activePage.value = 'editor'
+  openKnowledgeModule('editor')
   nextTick(() => setEditorContent(activeFile.value.extractedText, 0))
 }
 
@@ -3690,6 +3739,7 @@ function normalizeAiSettings(settings) {
 function logout() {
   clearSession()
   session.value = null
+  activePage.value = 'knowledge'
   folders.value = []
   files.value = []
   activeFolder.value = null
@@ -3699,6 +3749,7 @@ function logout() {
   planDraftItems.value = []
   planSessionByWeek.value = {}
   planModule.value = ''
+  knowledgeModule.value = ''
   planWeekStart.value = startOfWeekIso(new Date())
   resetPlanForm(toDateInputValue(new Date()))
   planAiMessages.value = initialPlanAiMessages()

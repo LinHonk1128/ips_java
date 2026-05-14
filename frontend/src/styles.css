@@ -1769,6 +1769,11 @@ textarea:focus {
   gap: 20px;
 }
 
+.knowledge-page {
+  min-height: calc(100vh - 128px);
+  align-content: center;
+}
+
 .mistake-module-landing {
   width: min(980px, 100%);
   display: grid;
@@ -1813,6 +1818,10 @@ textarea:focus {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
+}
+
+.knowledge-module-menu {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .mistake-module-card {
@@ -2354,6 +2363,10 @@ textarea:focus {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .knowledge-module-menu {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .planner-module-landing {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2447,6 +2460,10 @@ textarea:focus {
   }
 
   .mistake-module-menu {
+    grid-template-columns: 1fr;
+  }
+
+  .knowledge-module-menu {
     grid-template-columns: 1fr;
   }
 
