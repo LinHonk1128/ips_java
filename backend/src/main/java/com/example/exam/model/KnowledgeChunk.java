@@ -20,6 +20,15 @@ public class KnowledgeChunk {
     @Column(nullable = false, columnDefinition = "integer default 1")
     private int pageNumber = 1;
 
+    @Column(nullable = false, columnDefinition = "integer default 1")
+    private int chunkingVersion = 1;
+
+    @Column(nullable = false, columnDefinition = "integer default 0")
+    private int correctHitCount = 0;
+
+    @Column(nullable = false, columnDefinition = "integer default 0")
+    private int wrongHitCount = 0;
+
     @Lob
     @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
@@ -58,6 +67,30 @@ public class KnowledgeChunk {
 
     public void setPageNumber(int pageNumber) {
         this.pageNumber = pageNumber;
+    }
+
+    public int getChunkingVersion() {
+        return chunkingVersion;
+    }
+
+    public void setChunkingVersion(int chunkingVersion) {
+        this.chunkingVersion = chunkingVersion;
+    }
+
+    public int getCorrectHitCount() {
+        return correctHitCount;
+    }
+
+    public void setCorrectHitCount(int correctHitCount) {
+        this.correctHitCount = correctHitCount;
+    }
+
+    public int getWrongHitCount() {
+        return wrongHitCount;
+    }
+
+    public void setWrongHitCount(int wrongHitCount) {
+        this.wrongHitCount = wrongHitCount;
     }
 
     public String getContent() {

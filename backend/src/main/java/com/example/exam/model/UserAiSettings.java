@@ -41,6 +41,10 @@ public class UserAiSettings {
     @Column(nullable = false)
     private int embeddingDimensions = 1536;
 
+    @Lob
+    @Column(columnDefinition = "TEXT")
+    private String presetsJson;
+
     public Long getId() {
         return id;
     }
@@ -123,5 +127,13 @@ public class UserAiSettings {
 
     public void setEmbeddingDimensions(int embeddingDimensions) {
         this.embeddingDimensions = embeddingDimensions;
+    }
+
+    public String getPresetsJson() {
+        return presetsJson;
+    }
+
+    public void setPresetsJson(String presetsJson) {
+        this.presetsJson = presetsJson;
     }
 }

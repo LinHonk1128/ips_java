@@ -140,7 +140,9 @@ export const chatApi = {
 
 export const aiSettingsApi = {
   get: () => api('/ai-settings'),
-  save: (payload) => api('/ai-settings', { method: 'PUT', body: JSON.stringify(payload) })
+  save: (payload) => api('/ai-settings', { method: 'PUT', body: JSON.stringify(payload) }),
+  getPresets: () => api('/ai-settings/presets'),
+  savePresets: (presets) => api('/ai-settings/presets', { method: 'PUT', body: JSON.stringify({ presets }) })
 }
 
 export const studyPlanApi = {

@@ -116,7 +116,65 @@
 
         <p v-if="error" class="error-banner">{{ error }}</p>
 
-        <section v-if="activePage === 'knowledge' && !knowledgeModule" class="page-panel knowledge-page">
+        <section v-if="activePage === 'home'" class="page-panel home-page">
+          <div class="home-hero">
+            <div class="home-countdown">
+              <template v-if="savedExamDate">
+                <div v-if="examCountdownDays > 0" class="countdown-line">
+                  <span class="countdown-title">成为研究生倒计时</span>
+                  <div class="countdown-value" title="双击调整考研时间" @dblclick="openExamDatePicker">
+                    <strong class="countdown-display">{{ examCountdownDays }}</strong>
+                    <span>天</span>
+                  </div>
+                </div>
+                <strong v-else-if="examCountdownDays === 0" class="countdown-display" title="双击调整考研时间" @dblclick="openExamDatePicker">今天</strong>
+                <strong v-else class="countdown-display" title="双击调整考研时间" @dblclick="openExamDatePicker">已结束</strong>
+                <span v-if="examCountdownDays === 0">稳住节奏，认真完成这一场</span>
+                <span v-else-if="examCountdownDays < 0">可以重新设置下一次目标日期</span>
+              </template>
+              <template v-else>
+                <strong class="countdown-display placeholder" title="双击设置考研时间" @dblclick="openExamDatePicker">--:--</strong>
+                <span>设置考研时间后，首页会自动显示倒计时。</span>
+              </template>
+              <input ref="examDateInput" v-model="examDate" class="exam-date-trigger" type="date" :min="todayIso" aria-label="选择考研时间" @change="saveExamDate" />
+            </div>
+          </div>
+
+          <section class="home-task-panel" aria-label="当前任务">
+            <div class="section-head split">
+              <div>
+                <h3>当前任务</h3>
+                <p>根据学习规划中今天的安排自动显示。</p>
+              </div>
+              <button class="secondary-btn" type="button" @click="setActivePage('planner')">
+                <CalendarDays :size="17" />
+                去学习规划
+              </button>
+            </div>
+
+            <article v-if="currentHomeTask" class="current-task-card" :class="[`type-${currentHomeTask.itemType}`, `priority-${currentHomeTask.priority}`]">
+              <div class="current-task-time">
+                <Clock :size="18" />
+                <span>{{ currentHomeTaskState }}</span>
+                <time>{{ normalizeTimeValue(currentHomeTask.startTime) }} - {{ normalizeTimeValue(currentHomeTask.endTime) }}</time>
+              </div>
+              <div class="current-task-main">
+                <strong>{{ currentHomeTask.title }}</strong>
+                <span>{{ currentHomeTask.subject || planTypeLabel(currentHomeTask.itemType) }}</span>
+                <p v-if="currentHomeTask.description">{{ currentHomeTask.description }}</p>
+              </div>
+              <span class="status-pill compact">{{ planPriorityLabel(currentHomeTask.priority) }}优先级</span>
+            </article>
+
+            <div v-else class="empty-state home-empty-task">
+              <CalendarPlus :size="30" />
+              <strong>当前暂未安排，那就休息一下吧~</strong>
+              <span>也可以去学习规划里为今天添加一个任务。</span>
+            </div>
+          </section>
+        </section>
+
+        <section v-else-if="activePage === 'knowledge' && !knowledgeModule" class="page-panel knowledge-page">
           <div class="mistake-module-landing">
             <div class="mistake-module-menu knowledge-module-menu">
               <button class="mistake-module-card" type="button" @click="openKnowledgeModule('library')">
@@ -1186,6 +1244,23 @@
               </div>
             </div>
 
+            <div class="browser-filter-bar">
+              <strong>状态筛选</strong>
+              <div class="mistake-status-picker">
+                <button
+                  v-for="option in mistakeStatusOptions"
+                  :key="option.key"
+                  class="status-pill filter-status-pill"
+                  :class="{ active: browseStatusFilterKeys.includes(option.key) }"
+                  type="button"
+                  @click="toggleIdInArray(browseStatusFilterKeys, option.key)"
+                >
+                  {{ option.label }}
+                </button>
+                <button v-if="browseStatusFilterKeys.length" class="secondary-btn slim" type="button" @click="browseStatusFilterKeys = []">清空状态</button>
+              </div>
+            </div>
+
             <div class="mistake-list">
               <article
                 v-for="mistake in filteredMistakes"
@@ -1233,6 +1308,9 @@
                   </div>
                 </div>
                 <div class="mistake-question" :class="{ 'with-solution': isBrowseSolutionVisible(mistake) }">
+                  <div class="mistake-content-label">
+                    <span>题目</span>
+                  </div>
                   <div v-if="mistake.questionText" v-html="renderRichText(mistake.questionText)"></div>
                   <div v-if="mistake.questionAttachments?.length" class="saved-image-strip">
                     <figure
@@ -1292,7 +1370,7 @@
                 <strong>还没有错题</strong>
                 <span>上传题目和解析后，就能按掌握状态刷题复习。</span>
               </div>
-              <div v-else-if="filteredMistakes.length === 0" class="empty-note">当前科目筛选下没有错题。</div>
+              <div v-else-if="filteredMistakes.length === 0" class="empty-note">当前筛选下没有错题。</div>
             </div>
           </div>
 
@@ -1454,7 +1532,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import {
   Bold,
   BookOpenCheck,
@@ -1510,7 +1588,7 @@ const folders = ref([])
 const files = ref([])
 const activeFolder = ref(null)
 const activeFile = ref(null)
-const activePage = ref('knowledge')
+const activePage = ref('home')
 const uploadTag = ref('NOTE')
 const fileInput = ref(null)
 const editorElement = ref(null)
@@ -1518,6 +1596,8 @@ const activeFilePages = ref([])
 const activeFilePageIndex = ref(0)
 const editorTextColor = ref('#24231f')
 const loading = ref(false)
+const homeClockNow = ref(Date.now())
+const homeClockTimerId = ref(null)
 const chatLoading = ref(false)
 const noteLoading = ref(false)
 const error = ref('')
@@ -1536,11 +1616,15 @@ const moveFileTargetId = ref('')
 const rootFolderCollapsed = ref(false)
 const collapsedFolderIds = ref(new Set())
 const studyPlanItems = ref([])
+const homePlanItems = ref([])
 const planDraftItems = ref([])
 const planSessionByWeek = ref({})
 const planModule = ref('')
 const knowledgeModule = ref('')
 const planWeekStart = ref(startOfWeekIso(new Date()))
+const savedExamDate = ref(loadExamDate())
+const examDate = ref(savedExamDate.value)
+const examDateInput = ref(null)
 const editingPlanItem = ref(null)
 const planAiMessages = ref(initialPlanAiMessages())
 const planAiInput = ref('')
@@ -1596,6 +1680,7 @@ const showBrowseSolution = ref(true)
 const browseSolutionVisibility = ref({})
 const editingStatusMistakeId = ref(null)
 const browseSubjectFilterIds = ref([])
+const browseStatusFilterKeys = ref([])
 const solutionPreviewUrls = ref({})
 const questionPreviewUrls = ref({})
 const attachmentPreviewUrls = ref({})
@@ -1622,6 +1707,7 @@ const maxFolderDepth = 3
 const chatHistoryRetentionMs = 24 * 60 * 60 * 1000
 
 const navItems = [
+  { key: 'home', label: '首页', icon: Timer },
   { key: 'knowledge', label: '我的知识库', icon: Library },
   { key: 'planner', label: '学习规划', icon: CalendarDays },
   { key: 'mistakes', label: '错题集', icon: BookOpenCheck },
@@ -1629,6 +1715,10 @@ const navItems = [
 ]
 
 const pageMeta = {
+  home: {
+    title: '首页',
+    description: '查看考研倒计时和今天的当前任务。'
+  },
   knowledge: {
     title: '我的知识库',
     description: '集中管理资料、上传编辑和知识问答。'
@@ -1673,6 +1763,13 @@ const currentPageMeta = computed(() => {
 })
 const pageTitle = computed(() => currentPageMeta.value.title)
 const pageDescription = computed(() => currentPageMeta.value.description)
+const todayIso = computed(() => toDateInputValue(new Date(homeClockNow.value)))
+const examCountdownDays = computed(() => {
+  if (!savedExamDate.value) return null
+  const target = parseDateInput(savedExamDate.value)
+  const today = parseDateInput(todayIso.value)
+  return Math.ceil((target.getTime() - today.getTime()) / 86400000)
+})
 const messages = computed(() => chatMessages[chatForm.mode])
 const currentChatHasMessages = computed(() => messages.value.length > 0)
 const chatInputDisabled = computed(() => chatLoading.value || (chatForm.useKnowledgeBase && !activeFolder.value))
@@ -1757,10 +1854,13 @@ const mistakeStatusOptions = computed(() => [
 ])
 const unmasteredStatusOptions = computed(() => mistakeStatusOptions.value.filter((option) => !option.mastered))
 const filteredMistakes = computed(() => {
-  if (browseSubjectFilterIds.value.length === 0) return mistakes.value
   return mistakes.value.filter((mistake) => {
-    const ids = new Set((mistake.subjectTags || []).map((tag) => tag.id))
-    return browseSubjectFilterIds.value.some((id) => ids.has(id))
+    const matchesSubject = browseSubjectFilterIds.value.length === 0 || (() => {
+      const ids = new Set((mistake.subjectTags || []).map((tag) => tag.id))
+      return browseSubjectFilterIds.value.some((id) => ids.has(id))
+    })()
+    const matchesStatus = browseStatusFilterKeys.value.length === 0 || browseStatusFilterKeys.value.includes(statusKeyForMistake(mistake))
+    return matchesSubject && matchesStatus
   })
 })
 const practiceCurrentQuestion = computed(() => practiceQuestions.value[practiceIndex.value] || null)
@@ -1784,6 +1884,27 @@ const planWeekDays = computed(() => {
 const planWeekEnd = computed(() => planWeekDays.value.at(-1)?.iso || planWeekStart.value)
 const planWeekLabel = computed(() => `${formatShortDate(planWeekStart.value)} - ${formatShortDate(planWeekEnd.value)}`)
 const studyPlanItemsByDate = computed(() => groupPlanItemsByDate(studyPlanItems.value))
+const todaysHomePlanItems = computed(() => homePlanItems.value
+  .filter((item) => item.startDate === todayIso.value && item.status !== 'DONE')
+  .sort((left, right) => `${left.startTime}`.localeCompare(`${right.startTime}`))
+)
+const currentHomeTask = computed(() => {
+  const now = new Date(homeClockNow.value)
+  const minutes = now.getHours() * 60 + now.getMinutes()
+  const activeTask = todaysHomePlanItems.value.find((item) => {
+    const start = timeToMinutes(item.startTime)
+    const end = timeToMinutes(item.endTime)
+    return start <= minutes && minutes <= end
+  })
+  if (activeTask) return activeTask
+  return todaysHomePlanItems.value.find((item) => timeToMinutes(item.startTime) > minutes) || null
+})
+const currentHomeTaskState = computed(() => {
+  if (!currentHomeTask.value) return ''
+  const now = new Date(homeClockNow.value)
+  const minutes = now.getHours() * 60 + now.getMinutes()
+  return timeToMinutes(currentHomeTask.value.startTime) <= minutes ? '正在进行' : '下一项'
+})
 const planDraftItemsByDate = computed(() => groupPlanItemsByDate(planDraftItems.value))
 const planDraftDirty = computed(() => planPendingOperations.value.length > 0)
 const planDraftStats = computed(() => {
@@ -1869,6 +1990,53 @@ function planPriorityLabel(priority) {
 
 function planStatusLabel(status) {
   return { TODO: '待完成', DONE: '已完成', SKIPPED: '已跳过' }[status] || '待完成'
+}
+
+function timeToMinutes(value) {
+  const [hours, minutes] = normalizeTimeValue(value).split(':').map(Number)
+  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0)
+}
+
+function examDateStorageKey() {
+  const userKey = session.value?.userId || session.value?.username || 'guest'
+  return `smart_exam_date:${userKey}`
+}
+
+function loadExamDate() {
+  try {
+    const value = localStorage.getItem(examDateStorageKey()) || ''
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : ''
+  } catch {
+    return ''
+  }
+}
+
+function saveExamDate() {
+  if (!examDate.value) return
+  localStorage.setItem(examDateStorageKey(), examDate.value)
+  savedExamDate.value = examDate.value
+}
+
+function clearExamDate() {
+  localStorage.removeItem(examDateStorageKey())
+  savedExamDate.value = ''
+  examDate.value = ''
+}
+
+function openExamDatePicker() {
+  examDate.value = savedExamDate.value || todayIso.value
+  const input = examDateInput.value
+  if (!input) return
+  try {
+    input.focus()
+    if (typeof input.showPicker === 'function') {
+      input.showPicker()
+      return
+    }
+    input.click()
+  } catch {
+    input.click()
+  }
 }
 
 function folderChatHistoryKey(folderId) {
@@ -2052,11 +2220,21 @@ function openKnowledgeModule(module) {
 }
 
 onMounted(() => {
+  homeClockTimerId.value = window.setInterval(() => {
+    homeClockNow.value = Date.now()
+  }, 60000)
   if (session.value) {
     loadFolders()
     loadRemoteAiSettings()
     loadMistakeData()
     loadStudyPlan()
+  }
+})
+
+onUnmounted(() => {
+  if (homeClockTimerId.value) {
+    window.clearInterval(homeClockTimerId.value)
+    homeClockTimerId.value = null
   }
 })
 
@@ -2066,6 +2244,8 @@ async function submitAuth() {
     const result = await action(authForm)
     setSession(result)
     session.value = result
+    savedExamDate.value = loadExamDate()
+    examDate.value = savedExamDate.value
     await loadFolders()
     await loadRemoteAiSettings()
     await loadMistakeData()
@@ -2075,9 +2255,17 @@ async function submitAuth() {
 
 async function loadStudyPlan() {
   await run(async () => {
-    studyPlanItems.value = await studyPlanApi.list(planWeekStart.value, planWeekEnd.value)
+    const items = await studyPlanApi.list(planWeekStart.value, planWeekEnd.value)
+    studyPlanItems.value = items
+    syncHomePlanItemsFromCurrentWeek(items)
     restorePlanSession()
   })
+}
+
+function syncHomePlanItemsFromCurrentWeek(items = studyPlanItems.value) {
+  if (planWeekStart.value === startOfWeekIso(new Date())) {
+    homePlanItems.value = clonePlanItems(items)
+  }
 }
 
 function clonePlanItems(items = studyPlanItems.value) {
@@ -2414,6 +2602,7 @@ async function savePlanAiDraft() {
       operations: planPendingOperations.value
     })
     studyPlanItems.value = response.items || []
+    syncHomePlanItemsFromCurrentWeek(studyPlanItems.value)
     syncPlanDraftFromReal()
     planLastOperations.value = response.operations || []
     planAiMessages.value.push({ role: 'assistant', content: response.reply || '草稿已保存到真实日程。' })
@@ -2633,6 +2822,7 @@ async function deleteMistakeStatus(status) {
     if (mistakeForm.statusKey === `status:${status.id}`) {
       mistakeForm.statusKey = 'mastered'
     }
+    removeIdFromArray(browseStatusFilterKeys.value, `status:${status.id}`)
   })
 }
 
@@ -3656,11 +3846,32 @@ function persistAiSettingPresets() {
   localStorage.setItem(aiPresetStorageKey, JSON.stringify(aiSettingPresets.value))
 }
 
+function mergeAiSettingPresets(remotePresets = [], localPresets = aiSettingPresets.value) {
+  const merged = new Map()
+  ;[...localPresets, ...remotePresets].forEach((preset) => {
+    const normalized = normalizeAiPreset(preset)
+    if (!normalized) return
+    const key = normalized.name.trim().toLowerCase()
+    const current = merged.get(key)
+    if (!current || normalized.updatedAt >= current.updatedAt) {
+      merged.set(key, normalized)
+    }
+  })
+  return [...merged.values()].sort((a, b) => b.updatedAt - a.updatedAt)
+}
+
+async function persistRemoteAiSettingPresets() {
+  if (!session.value) return
+  const saved = await aiSettingsApi.savePresets(aiSettingPresets.value)
+  aiSettingPresets.value = mergeAiSettingPresets(saved, aiSettingPresets.value)
+  persistAiSettingPresets()
+}
+
 function currentAiSettingsSnapshot() {
   return normalizeAiSettings({ ...aiSettings })
 }
 
-function saveAiPreset() {
+async function saveAiPreset() {
   const name = aiPresetName.value.trim()
   if (!name) return
   const now = Date.now()
@@ -3675,6 +3886,7 @@ function saveAiPreset() {
   selectedAiPresetId.value = saved.id
   aiPresetName.value = name
   persistAiSettingPresets()
+  await run(persistRemoteAiSettingPresets)
 }
 
 function applyAiPreset() {
@@ -3689,19 +3901,28 @@ function syncSelectedAiPresetName() {
   aiPresetName.value = preset?.name || ''
 }
 
-function deleteAiPreset() {
+async function deleteAiPreset() {
   if (!selectedAiPresetId.value) return
   aiSettingPresets.value = aiSettingPresets.value.filter((preset) => preset.id !== selectedAiPresetId.value)
   selectedAiPresetId.value = ''
   aiPresetName.value = ''
   persistAiSettingPresets()
+  await run(persistRemoteAiSettingPresets)
 }
 
 async function loadRemoteAiSettings() {
   await run(async () => {
-    const remote = await aiSettingsApi.get()
+    const [remote, remotePresets] = await Promise.all([
+      aiSettingsApi.get(),
+      aiSettingsApi.getPresets()
+    ])
     Object.assign(aiSettings, normalizeAiSettings({ ...aiSettings, ...remote }))
+    aiSettingPresets.value = mergeAiSettingPresets(remotePresets)
     localStorage.setItem('smart_exam_ai_settings', JSON.stringify({ ...aiSettings }))
+    persistAiSettingPresets()
+    if (JSON.stringify(aiSettingPresets.value) !== JSON.stringify(remotePresets || [])) {
+      await persistRemoteAiSettingPresets()
+    }
   })
 }
 
@@ -3739,13 +3960,14 @@ function normalizeAiSettings(settings) {
 function logout() {
   clearSession()
   session.value = null
-  activePage.value = 'knowledge'
+  activePage.value = 'home'
   folders.value = []
   files.value = []
   activeFolder.value = null
   activeFile.value = null
   activeSource.value = null
   studyPlanItems.value = []
+  homePlanItems.value = []
   planDraftItems.value = []
   planSessionByWeek.value = {}
   planModule.value = ''
@@ -3757,6 +3979,8 @@ function logout() {
   planLastOperations.value = []
   planPendingOperations.value = []
   planUndoStack.value = []
+  savedExamDate.value = ''
+  examDate.value = ''
   folderChatHistories.value = []
   activeConversationIds.QA = null
   activeConversationIds.TEACHER = null
@@ -3765,6 +3989,8 @@ function logout() {
   mistakeStatuses.value = []
   mistakeSubjectTags.value = []
   activeMistake.value = null
+  browseSubjectFilterIds.value = []
+  browseStatusFilterKeys.value = []
   resetMistakeForm()
   closePractice()
   mistakeModule.value = ''

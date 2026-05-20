@@ -30,6 +30,8 @@ public interface KnowledgeChunkRepository extends JpaRepository<KnowledgeChunk, 
 
     long countByFileIdAndPageNumberGreaterThan(Long fileId, int pageNumber);
 
+    long countByFileIdAndChunkingVersionLessThan(Long fileId, int chunkingVersion);
+
     @Query("""
             select k from KnowledgeChunk k
             join k.file f

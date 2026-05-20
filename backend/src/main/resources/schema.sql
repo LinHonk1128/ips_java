@@ -11,12 +11,24 @@ ALTER TABLE IF EXISTS study_folder
 ALTER TABLE IF EXISTS study_file
     ADD COLUMN IF NOT EXISTS knowledge_enabled boolean DEFAULT true NOT NULL;
 
+ALTER TABLE IF EXISTS user_ai_settings
+    ADD COLUMN IF NOT EXISTS presets_json TEXT;
+
 UPDATE study_file
 SET knowledge_enabled = true
 WHERE knowledge_enabled IS NULL;
 
 ALTER TABLE IF EXISTS knowledge_chunk
     ADD COLUMN IF NOT EXISTS page_number integer DEFAULT 1 NOT NULL;
+
+ALTER TABLE IF EXISTS knowledge_chunk
+    ADD COLUMN IF NOT EXISTS chunking_version integer DEFAULT 1 NOT NULL;
+
+ALTER TABLE IF EXISTS knowledge_chunk
+    ADD COLUMN IF NOT EXISTS correct_hit_count integer DEFAULT 0 NOT NULL;
+
+ALTER TABLE IF EXISTS knowledge_chunk
+    ADD COLUMN IF NOT EXISTS wrong_hit_count integer DEFAULT 0 NOT NULL;
 
 ALTER TABLE IF EXISTS mistake_question
     ADD COLUMN IF NOT EXISTS question_original_name varchar(180);

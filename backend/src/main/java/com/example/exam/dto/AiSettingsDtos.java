@@ -2,6 +2,7 @@ package com.example.exam.dto;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import java.util.List;
 
 public class AiSettingsDtos {
     public record AiSettingsRequest(
@@ -27,6 +28,19 @@ public class AiSettingsDtos {
             String embeddingEndpoint,
             String embeddingApiKey,
             Integer embeddingDimensions
+    ) {
+    }
+
+    public record AiSettingsPreset(
+            String id,
+            String name,
+            AiSettingsRequest settings,
+            Long updatedAt
+    ) {
+    }
+
+    public record AiSettingsPresetsRequest(
+            List<AiSettingsPreset> presets
     ) {
     }
 }
