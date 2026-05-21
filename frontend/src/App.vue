@@ -5111,6 +5111,19 @@ function profileDiagnosisCacheKey(days = profileTrendDays.value) {
   return `smart_exam_profile_diagnosis_v2_${userKey}_${toDateInputValue(new Date())}_${days}`
 }
 
+function profileDiagnosisAiCacheKey() {
+  const userKey = session.value?.userId || session.value?.username || 'anonymous'
+  return `smart_exam_profile_diagnosis_ai_v1_${userKey}_${toDateInputValue(new Date())}`
+}
+
+function hasTodayProfileDiagnosisAi() {
+  return localStorage.getItem(profileDiagnosisAiCacheKey()) === 'true'
+}
+
+function markTodayProfileDiagnosisAi() {
+  localStorage.setItem(profileDiagnosisAiCacheKey(), 'true')
+}
+
 function readCachedProfileDiagnosis(days = profileTrendDays.value) {
   const raw = localStorage.getItem(profileDiagnosisCacheKey(days))
   if (!raw) return null
@@ -5136,7 +5149,7 @@ function ensureDailyProfileDiagnosis() {
   loadProfileDiagnosis({ force: true })
 }
 
-async function loadProfileDiagnosis({ force = false } = {}) {
+async function loadProfileDiagnosis({ force = false, refreshAi = false } = {}) {
   if (!session.value || !studyProfile.value?.onboarded || profileDiagnosisLoading.value) return
   const days = profileTrendDays.value
   const cached = force ? null : readCachedProfileDiagnosis(days)
@@ -5147,10 +5160,14 @@ async function loadProfileDiagnosis({ force = false } = {}) {
   const requestId = ++profileDiagnosisRequestId
   profileDiagnosisLoading.value = true
   try {
-    const diagnosis = await knowledgeProfileApi.diagnosis({ days, ai: true })
+    const useAi = refreshAi || !hasTodayProfileDiagnosisAi()
+    const diagnosis = await knowledgeProfileApi.diagnosis({ days, ai: useAi })
     if (requestId !== profileDiagnosisRequestId) return
     profileDiagnosis.value = diagnosis
     cacheProfileDiagnosis(diagnosis, days)
+    if (useAi) {
+      markTodayProfileDiagnosisAi()
+    }
   } catch (err) {
     if (requestId === profileDiagnosisRequestId) {
       error.value = err.message
@@ -5163,12 +5180,12 @@ async function loadProfileDiagnosis({ force = false } = {}) {
 }
 
 async function refreshProfileDiagnosis() {
-  await loadProfileDiagnosis({ force: true })
+  await loadProfileDiagnosis({ force: true, refreshAi: true })
 }
 
 async function refreshProfileRecommendations() {
   await loadKnowledgeProfile()
-  await loadProfileDiagnosis({ force: true })
+  await loadProfileDiagnosis({ force: true, refreshAi: true })
 }
 
 async function changeProfilePressureSubject() {

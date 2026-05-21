@@ -1,6 +1,9 @@
 package com.example.exam.service;
 
 import com.example.exam.dto.ChatDtos.ConversationMessage;
+import com.example.exam.dto.KnowledgeProfileDtos.DiagnosisItemResponse;
+import com.example.exam.dto.KnowledgeProfileDtos.DiagnosisResponse;
+import com.example.exam.dto.KnowledgeProfileDtos.ReviewSuggestionResponse;
 import com.example.exam.dto.StudyPlanDtos.StudyPlanAiChatRequest;
 import com.example.exam.dto.StudyPlanDtos.StudyPlanAiChatResponse;
 import com.example.exam.dto.StudyPlanDtos.StudyPlanApplyRequest;
@@ -27,6 +30,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -46,19 +50,24 @@ public class StudyPlanAiService {
 
     private final StudyPlanService studyPlanService;
     private final AiSettingsService aiSettingsService;
+    private final KnowledgeProfileService knowledgeProfileService;
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
-    public StudyPlanAiService(StudyPlanService studyPlanService, AiSettingsService aiSettingsService) {
+    public StudyPlanAiService(StudyPlanService studyPlanService,
+                              AiSettingsService aiSettingsService,
+                              KnowledgeProfileService knowledgeProfileService) {
         this.studyPlanService = studyPlanService;
         this.aiSettingsService = aiSettingsService;
+        this.knowledgeProfileService = knowledgeProfileService;
     }
 
     @Transactional(readOnly = true)
     public StudyPlanAiChatResponse chat(Long userId, StudyPlanAiChatRequest request) {
         List<StudyPlanItem> items = studyPlanService.listEntities(userId, request.fromDate(), request.toDate());
         var settings = mergedSettings(userId, request);
-        ModelCallResult result = callModelMessages(settings, buildChatMessages(request.messages(), items), 1600, 0.25);
+        DiagnosisContext diagnosis = diagnosisContext(userId, request.fromDate(), request.toDate());
+        ModelCallResult result = callModelMessages(settings, buildChatMessages(request.messages(), items, diagnosis), 1600, 0.25);
         String answer = result.content();
         if (answer == null || answer.isBlank()) {
             answer = hasChatApiKey(settings)
@@ -72,7 +81,8 @@ public class StudyPlanAiService {
     public StudyPlanGenerateResponse generate(Long userId, User user, StudyPlanGenerateRequest request) {
         List<StudyPlanItem> before = studyPlanService.listEntities(userId, request.fromDate(), request.toDate());
         var settings = mergedSettings(userId, request);
-        ModelCallResult result = callModel(settings, buildGeneratePrompt(request, before), PLANNING_MAX_TOKENS, 0.1);
+        DiagnosisContext diagnosis = diagnosisContext(userId, request.fromDate(), request.toDate());
+        ModelCallResult result = callModel(settings, buildGeneratePrompt(request, before, diagnosis), PLANNING_MAX_TOKENS, 0.1);
         String raw = result.content();
         if (raw == null || raw.isBlank()) {
             String reply = hasChatApiKey(settings)
@@ -280,32 +290,38 @@ public class StudyPlanAiService {
         return cleaned.substring(start, end + 1);
     }
 
-    private String buildChatPrompt(List<ConversationMessage> messages, List<StudyPlanItem> items) {
+    private String buildChatPrompt(List<ConversationMessage> messages, List<StudyPlanItem> items, DiagnosisContext diagnosis) {
         return """
                 你是学习时间规划助手，目标是帮助用户制定可执行、不过载的学习安排。
-                你必须把“当前规划”作为上下文，回答时指出冲突、空档、负荷和优先级建议。
+                你必须把“当前规划”和“学习诊断”作为上下文，回答时指出冲突、空档、负荷和优先级建议。
                 现在只是讨论规划，不要输出 JSON，也不要声称已经修改日程。
 
                 当前规划：
                 %s
 
+                学习诊断：
+                %s
+
                 对话：
                 %s
-                """.formatted(planContext(items), conversationTranscript(messages));
+                """.formatted(planContext(items), diagnosisContextText(diagnosis), conversationTranscript(messages));
     }
 
-    private List<Map<String, String>> buildChatMessages(List<ConversationMessage> messages, List<StudyPlanItem> items) {
+    private List<Map<String, String>> buildChatMessages(List<ConversationMessage> messages, List<StudyPlanItem> items, DiagnosisContext diagnosis) {
         List<Map<String, String>> modelMessages = new ArrayList<>();
         modelMessages.add(Map.of(
                 "role", "system",
                 "content", """
                         你是学习时间规划助手，目标是帮助用户制定可执行、不过载的学习安排。
-                        你必须把“当前规划”作为上下文，回答时指出冲突、空档、负荷和优先级建议。
+                        你必须把“当前规划”和“学习诊断”作为上下文，回答时指出冲突、空档、负荷和优先级建议。
                         现在只是讨论规划，不要输出 JSON，也不要声称已经修改日程。
 
                         当前规划：
                         %s
-                        """.formatted(planContext(items))
+
+                        学习诊断：
+                        %s
+                        """.formatted(planContext(items), diagnosisContextText(diagnosis))
         ));
         if (messages != null) {
             for (ConversationMessage message : messages) {
@@ -325,16 +341,19 @@ public class StudyPlanAiService {
         return modelMessages;
     }
 
-    private String buildGeneratePrompt(StudyPlanGenerateRequest request, List<StudyPlanItem> items) {
+    private String buildGeneratePrompt(StudyPlanGenerateRequest request, List<StudyPlanItem> items, DiagnosisContext diagnosis) {
         String instruction = request.instruction() == null || request.instruction().isBlank()
                 ? "请根据完整对话生成并调整学习规划。"
                 : request.instruction().trim();
         return """
-                你是学习时间规划助手。请根据用户对话和当前规划，输出一个可以被系统直接执行的 JSON 对象。
+                你是学习时间规划助手。请根据用户对话、当前规划和学习诊断，输出一个可以被系统直接执行的 JSON 对象。
 
                 当前日期范围：%s 到 %s
 
                 当前规划：
+                %s
+
+                学习诊断：
                 %s
 
                 用户对话：
@@ -375,8 +394,84 @@ public class StudyPlanAiService {
                 request.fromDate(),
                 request.toDate(),
                 planContext(items),
+                diagnosisContextText(diagnosis),
                 conversationTranscript(request.messages()),
                 instruction
+        );
+    }
+
+    private DiagnosisContext diagnosisContext(Long userId, LocalDate fromDate, LocalDate toDate) {
+        int days = diagnosisDaysForPlanDate(fromDate, toDate);
+        try {
+            return new DiagnosisContext(days, knowledgeProfileService.diagnosis(userId, days, false));
+        } catch (Exception ex) {
+            log.warn("study plan diagnosis context failed userId={} days={}", userId, days, ex);
+            return new DiagnosisContext(days, null);
+        }
+    }
+
+    private int diagnosisDaysForPlanDate(LocalDate fromDate, LocalDate toDate) {
+        LocalDate targetDate = toDate != null ? toDate : fromDate;
+        if (targetDate == null) {
+            return 7;
+        }
+        long daysFromToday = ChronoUnit.DAYS.between(LocalDate.now(), targetDate) + 1;
+        if (daysFromToday <= 7) {
+            return 7;
+        }
+        if (daysFromToday <= 14) {
+            return 14;
+        }
+        return 30;
+    }
+
+    private String diagnosisContextText(DiagnosisContext context) {
+        if (context == null) {
+            return "学习诊断暂不可用。";
+        }
+        DiagnosisResponse diagnosis = context.diagnosis();
+        if (diagnosis == null) {
+            return "已按规划日期选择最近 " + context.days() + " 天学习诊断，但当前诊断暂不可用。";
+        }
+        StringBuilder builder = new StringBuilder();
+        builder.append("诊断窗口：最近 ").append(context.days()).append(" 天。\n");
+        if (!diagnosis.dataSufficient()) {
+            builder.append("数据状态：不足。\n");
+            builder.append(blankToDash(diagnosis.summary()));
+            return builder.toString();
+        }
+        builder.append("规则总结：").append(blankToDash(diagnosis.summary())).append("\n");
+        if (diagnosis.items() != null && !diagnosis.items().isEmpty()) {
+            builder.append("关键指标：\n");
+            diagnosis.items().stream()
+                    .limit(4)
+                    .map(this::diagnosisItemLine)
+                    .forEach(line -> builder.append("- ").append(line).append("\n"));
+        }
+        if (diagnosis.suggestions() != null && !diagnosis.suggestions().isEmpty()) {
+            builder.append("优先复盘建议：\n");
+            diagnosis.suggestions().stream()
+                    .limit(5)
+                    .map(this::suggestionLine)
+                    .forEach(line -> builder.append("- ").append(line).append("\n"));
+        }
+        return builder.toString().trim();
+    }
+
+    private String diagnosisItemLine(DiagnosisItemResponse item) {
+        return "%s：%s，%s".formatted(
+                blankToDash(item.label()),
+                blankToDash(item.value()),
+                blankToDash(item.detail())
+        );
+    }
+
+    private String suggestionLine(ReviewSuggestionResponse suggestion) {
+        return "%s | 科目:%s | 风险分:%s | 建议:%s".formatted(
+                blankToDash(suggestion.title()),
+                blankToDash(suggestion.subjectName()),
+                Math.round(suggestion.riskScore()),
+                blankToDash(suggestion.reason())
         );
     }
 
@@ -675,6 +770,9 @@ public class StudyPlanAiService {
     }
 
     private record ModelCallResult(String content, String error) {
+    }
+
+    private record DiagnosisContext(int days, DiagnosisResponse diagnosis) {
     }
 
     private record ParsedPlan(String reply, List<JsonNode> actions) {
