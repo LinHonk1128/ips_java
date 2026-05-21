@@ -1,0 +1,220 @@
+@media (max-width: 1120px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    min-height: auto;
+  }
+
+  .page-nav {
+    grid-template-columns: repeat(auto-fit, minmax(136px, 1fr));
+  }
+
+  .folder-context {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .context-head {
+    grid-column: 1 / -1;
+  }
+
+  .qa-toolbar,
+  .home-hero,
+  .editor-layout,
+  .planner-layout,
+  .planner-ai-layout,
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-preview {
+    position: static;
+  }
+
+  .mistake-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mistake-module-menu {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .knowledge-module-menu {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .planner-module-landing {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mistake-module-card {
+    min-height: 180px;
+  }
+
+  .practice-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .profile-grid,
+  .profile-grid.enhanced {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .profile-charts,
+  .profile-sections,
+  .diagnosis-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .subject-profile-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .diagnosis-head,
+  .recommendation-row {
+    align-items: stretch;
+    flex-direction: column;
+    grid-template-columns: 1fr;
+  }
+
+  .diagnosis-actions {
+    justify-content: flex-start;
+  }
+
+  .recommendation-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 760px) {
+  .auth-panel {
+    grid-template-columns: 1fr;
+    padding: 24px;
+  }
+
+  .workspace {
+    padding: 8px;
+  }
+
+  .topbar,
+  .section-head.split {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .folder-chip {
+    max-width: 100%;
+  }
+
+  .page-nav,
+  .current-task-card,
+  .planner-toolbar,
+  .planner-form-grid,
+  .planner-form-grid.three,
+  .folder-form.wide,
+  .folder-edit-panel,
+  .page-toolbar,
+  .file-row,
+  .file-move-panel,
+  .settings-presets,
+  .settings-grid,
+  .upload-strip,
+  .question-box,
+  .mistake-management-panel,
+  .subject-tag-create,
+  .status-create,
+  .practice-form,
+  .profile-grid,
+  .profile-grid.enhanced,
+  .subject-profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-chart,
+  .profile-chart.trend {
+    height: 240px;
+  }
+
+  .chart-title-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .chart-filter,
+  .chart-filter select {
+    width: 100%;
+  }
+
+  .subject-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .home-countdown {
+    min-height: 190px;
+  }
+
+  .exam-date-card {
+    grid-template-columns: 1fr;
+  }
+
+  .current-task-card {
+    align-items: stretch;
+  }
+
+  .ai-summary {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .ai-summary b,
+  .ai-summary .secondary-btn {
+    grid-column: 1 / -1;
+  }
+
+  .history-actions,
+  .history-actions .secondary-btn {
+    width: 100%;
+  }
+
+  .history-menu,
+  .history-trigger {
+    width: 100%;
+  }
+
+  .history-popover {
+    left: 0;
+    right: auto;
+    width: 100%;
+  }
+
+  .file-row {
+    grid-template-columns: 22px minmax(0, 1fr);
+  }
+
+  .file-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .primary-btn.compact,
+  .secondary-btn {
+    width: 100%;
+  }
+
+  .mistake-module-menu {
+    grid-template-columns: 1fr;
+  }
+
+  .knowledge-module-menu {
+    grid-template-columns: 1fr;
+  }
+
+  .planner-module-landing {
+    grid-template-columns: 1fr;
+  }
+
+  .mistake-module-card {
+    aspect-ratio: auto;
+    min-height: 148px;
+  }
+}
