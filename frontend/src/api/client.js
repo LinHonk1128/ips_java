@@ -135,7 +135,43 @@ export const fileApi = {
 export const chatApi = {
   ask: (payload) => api('/chat', { method: 'POST', body: JSON.stringify(payload) }),
   askStream: (payload, onDelta) => streamApi('/chat/stream', payload, { onDelta }),
+  teacherQuestion: (payload) => api('/chat/teacher/question', { method: 'POST', body: JSON.stringify(payload) }),
+  feedbackChunk: (chunkId, payload) => api(`/chat/chunks/${chunkId}/feedback`, { method: 'POST', body: JSON.stringify(payload) }),
   createNote: (payload) => api('/chat/note', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export const studyProfileApi = {
+  get: () => api('/study-profile'),
+  onboard: (payload) => api('/study-profile/onboarding', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (payload) => api('/study-profile', { method: 'PUT', body: JSON.stringify(payload) })
+}
+
+export const knowledgeProfileApi = {
+  overview: () => api('/knowledge-profile/overview'),
+  subjects: () => api('/knowledge-profile/subjects'),
+  files: ({ folderId = null } = {}) => {
+    const params = new URLSearchParams()
+    if (folderId) params.set('folderId', String(folderId))
+    const query = params.toString()
+    return api(`/knowledge-profile/files${query ? `?${query}` : ''}`)
+  },
+  weakChunks: () => api('/knowledge-profile/weak-chunks'),
+  trends: ({ days = 14 } = {}) => api(`/knowledge-profile/trends?days=${encodeURIComponent(String(days))}`),
+  distribution: () => api('/knowledge-profile/distribution'),
+  activity: ({ days = 30 } = {}) => api(`/knowledge-profile/activity?days=${encodeURIComponent(String(days))}`),
+  risk: ({ days = 30, folderId = null } = {}) => {
+    const params = new URLSearchParams({ days: String(days) })
+    if (folderId) params.set('folderId', String(folderId))
+    return api(`/knowledge-profile/risk?${params.toString()}`)
+  },
+  diagnosis: ({ days = 30, ai = true } = {}) => api(`/knowledge-profile/diagnosis?days=${encodeURIComponent(String(days))}&ai=${encodeURIComponent(String(ai))}`),
+  searchChunks: ({ query = '', folderId = null, fileId = null, limit = 20 } = {}) => {
+    const params = new URLSearchParams({ limit: String(limit) })
+    if (query) params.set('query', query)
+    if (folderId) params.set('folderId', String(folderId))
+    if (fileId) params.set('fileId', String(fileId))
+    return api(`/knowledge-profile/chunks?${params.toString()}`)
+  }
 }
 
 export const aiSettingsApi = {
@@ -154,6 +190,7 @@ export const studyPlanApi = {
     return api(`/study-plan${query ? `?${query}` : ''}`)
   },
   create: (payload) => api('/study-plan', { method: 'POST', body: JSON.stringify(payload) }),
+  createFromProfileSuggestion: (payload) => api('/study-plan/profile-suggestion', { method: 'POST', body: JSON.stringify(payload) }),
   update: (itemId, payload) => api(`/study-plan/${itemId}`, { method: 'PUT', body: JSON.stringify(payload) }),
   delete: (itemId) => api(`/study-plan/${itemId}`, { method: 'DELETE' }),
   chat: (payload) => api('/study-plan/ai/chat', { method: 'POST', body: JSON.stringify(payload) }),
@@ -187,13 +224,16 @@ export const mistakeApi = {
     appendOptionalFormValue(form, 'questionAttachmentFile', payload.questionAttachmentFile)
     ;(payload.questionImageFiles || []).forEach((file) => appendOptionalFormValue(form, 'questionImageFiles', file))
     ;(payload.questionImageNames || []).forEach((name) => appendOptionalFormValue(form, 'questionImageNames', name))
+    ;(payload.retainedQuestionAttachmentIds || []).forEach((id) => appendOptionalFormValue(form, 'retainedQuestionAttachmentIds', id))
     appendOptionalFormValue(form, 'solutionText', payload.solutionText)
     appendOptionalFormValue(form, 'solutionFile', payload.solutionFile)
     ;(payload.solutionImageFiles || []).forEach((file) => appendOptionalFormValue(form, 'solutionImageFiles', file))
     ;(payload.solutionImageNames || []).forEach((name) => appendOptionalFormValue(form, 'solutionImageNames', name))
+    ;(payload.retainedSolutionAttachmentIds || []).forEach((id) => appendOptionalFormValue(form, 'retainedSolutionAttachmentIds', id))
     appendOptionalFormValue(form, 'mastered', payload.mastered ? 'true' : 'false')
     appendOptionalFormValue(form, 'statusId', payload.statusId)
     ;(payload.subjectTagIds || []).forEach((id) => appendOptionalFormValue(form, 'subjectTagIds', id))
+    ;(payload.chunkIds || []).forEach((id) => appendOptionalFormValue(form, 'chunkIds', id))
     return api('/mistakes', { method: 'POST', body: form })
   },
   update: (mistakeId, payload) => {
@@ -202,13 +242,16 @@ export const mistakeApi = {
     appendOptionalFormValue(form, 'questionAttachmentFile', payload.questionAttachmentFile)
     ;(payload.questionImageFiles || []).forEach((file) => appendOptionalFormValue(form, 'questionImageFiles', file))
     ;(payload.questionImageNames || []).forEach((name) => appendOptionalFormValue(form, 'questionImageNames', name))
+    ;(payload.retainedQuestionAttachmentIds || []).forEach((id) => appendOptionalFormValue(form, 'retainedQuestionAttachmentIds', id))
     appendOptionalFormValue(form, 'solutionText', payload.solutionText)
     appendOptionalFormValue(form, 'solutionFile', payload.solutionFile)
     ;(payload.solutionImageFiles || []).forEach((file) => appendOptionalFormValue(form, 'solutionImageFiles', file))
     ;(payload.solutionImageNames || []).forEach((name) => appendOptionalFormValue(form, 'solutionImageNames', name))
+    ;(payload.retainedSolutionAttachmentIds || []).forEach((id) => appendOptionalFormValue(form, 'retainedSolutionAttachmentIds', id))
     appendOptionalFormValue(form, 'mastered', payload.mastered ? 'true' : 'false')
     appendOptionalFormValue(form, 'statusId', payload.statusId)
     ;(payload.subjectTagIds || []).forEach((id) => appendOptionalFormValue(form, 'subjectTagIds', id))
+    ;(payload.chunkIds || []).forEach((id) => appendOptionalFormValue(form, 'chunkIds', id))
     return api(`/mistakes/${mistakeId}`, { method: 'PUT', body: form })
   },
   recognize: (file) => {
@@ -217,6 +260,8 @@ export const mistakeApi = {
     return api('/mistakes/recognize', { method: 'POST', body: form })
   },
   updateMistakeStatus: (mistakeId, payload) => api(`/mistakes/${mistakeId}/status`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  createFromTeacherQuestion: (payload) => api('/mistakes/from-teacher-question', { method: 'POST', body: JSON.stringify(payload) }),
+  recordPracticeResult: (mistakeId, payload) => api(`/mistakes/${mistakeId}/practice-result`, { method: 'POST', body: JSON.stringify(payload) }),
   delete: (mistakeId) => api(`/mistakes/${mistakeId}`, { method: 'DELETE' }),
   attachmentUrl: (attachmentId) => `${API_BASE}/mistake-attachments/${attachmentId}`,
   questionFileUrl: (mistakeId) => `${API_BASE}/mistakes/${mistakeId}/question-file`,

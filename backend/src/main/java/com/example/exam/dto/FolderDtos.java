@@ -18,6 +18,15 @@ public class FolderDtos {
     ) {
     }
 
-    public record FolderResponse(Long id, String name, String description, Long parentId, int depth, Instant createdAt) {
+    public record FolderResponse(
+            Long id,
+            String name,
+            String description,
+            Long parentId,
+            int depth,
+            boolean subjectFolder,
+            int subjectOrder,
+            Instant createdAt
+    ) {
     }
 }

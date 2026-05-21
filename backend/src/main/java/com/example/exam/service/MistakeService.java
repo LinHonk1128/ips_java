@@ -1,19 +1,29 @@
 package com.example.exam.service;
 
 import com.example.exam.dto.MistakeDtos.MistakeAttachmentResponse;
+import com.example.exam.dto.MistakeDtos.LinkedChunkResponse;
 import com.example.exam.dto.MistakeDtos.MistakeResponse;
+import com.example.exam.dto.MistakeDtos.PracticeResultResponse;
 import com.example.exam.dto.MistakeDtos.MistakeSubjectTagResponse;
 import com.example.exam.dto.MistakeDtos.MistakeStatusResponse;
+import com.example.exam.model.KnowledgeChunk;
 import com.example.exam.model.MistakeAttachment;
 import com.example.exam.model.MistakeAttachmentType;
+import com.example.exam.model.MistakePracticeEvent;
+import com.example.exam.model.MistakeQuestionChunk;
+import com.example.exam.model.MistakeQuestionChunkSourceType;
 import com.example.exam.model.MistakeQuestion;
 import com.example.exam.model.MistakeStatus;
 import com.example.exam.model.MistakeSubjectTag;
+import com.example.exam.model.StudyFolder;
 import com.example.exam.model.User;
 import com.example.exam.repository.MistakeAttachmentRepository;
+import com.example.exam.repository.MistakePracticeEventRepository;
+import com.example.exam.repository.MistakeQuestionChunkRepository;
 import com.example.exam.repository.MistakeQuestionRepository;
 import com.example.exam.repository.MistakeStatusRepository;
 import com.example.exam.repository.MistakeSubjectTagRepository;
+import com.example.exam.repository.StudyFolderRepository;
 import com.example.exam.repository.UserRepository;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -37,24 +47,36 @@ public class MistakeService {
     private final MistakeQuestionRepository mistakeRepository;
     private final MistakeStatusRepository statusRepository;
     private final MistakeAttachmentRepository attachmentRepository;
+    private final MistakePracticeEventRepository practiceEventRepository;
+    private final MistakeQuestionChunkRepository mistakeChunkRepository;
     private final MistakeSubjectTagRepository subjectTagRepository;
+    private final StudyFolderRepository folderRepository;
     private final UserRepository userRepository;
     private final TextExtractionService textExtractionService;
+    private final KnowledgeChunkInteractionService chunkInteractionService;
     private final Path uploadDir;
 
     public MistakeService(MistakeQuestionRepository mistakeRepository,
                           MistakeStatusRepository statusRepository,
                           MistakeAttachmentRepository attachmentRepository,
+                          MistakePracticeEventRepository practiceEventRepository,
+                          MistakeQuestionChunkRepository mistakeChunkRepository,
                           MistakeSubjectTagRepository subjectTagRepository,
+                          StudyFolderRepository folderRepository,
                           UserRepository userRepository,
                           TextExtractionService textExtractionService,
+                          KnowledgeChunkInteractionService chunkInteractionService,
                           @Value("${app.upload-dir}") String uploadDir) {
         this.mistakeRepository = mistakeRepository;
         this.statusRepository = statusRepository;
         this.attachmentRepository = attachmentRepository;
+        this.practiceEventRepository = practiceEventRepository;
+        this.mistakeChunkRepository = mistakeChunkRepository;
         this.subjectTagRepository = subjectTagRepository;
+        this.folderRepository = folderRepository;
         this.userRepository = userRepository;
         this.textExtractionService = textExtractionService;
+        this.chunkInteractionService = chunkInteractionService;
         this.uploadDir = Path.of(uploadDir);
     }
 
@@ -107,11 +129,35 @@ public class MistakeService {
         statusRepository.delete(status);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<MistakeSubjectTagResponse> listSubjectTags(Long userId) {
+        syncSubjectFolderTags(userId);
         return subjectTagRepository.findByOwnerIdOrderByCreatedAtAsc(userId).stream()
                 .map(this::toSubjectTagResponse)
                 .toList();
+    }
+
+    private void syncSubjectFolderTags(Long userId) {
+        User owner = userRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("User not found"));
+        java.util.Set<String> subjectNames = new java.util.LinkedHashSet<>();
+        for (StudyFolder folder : folderRepository.findByOwnerIdAndSubjectFolderTrueOrderBySubjectOrderAscCreatedAtAsc(userId)) {
+            if (folder.getParent() != null || folder.getName() == null || folder.getName().isBlank()) {
+                continue;
+            }
+            String name = folder.getName().trim();
+            subjectNames.add(name);
+            if (subjectTagRepository.findByOwnerIdAndNameIgnoreCase(userId, name).isEmpty()) {
+                MistakeSubjectTag tag = new MistakeSubjectTag();
+                tag.setOwner(owner);
+                tag.setName(name);
+                subjectTagRepository.save(tag);
+            }
+        }
+        for (MistakeSubjectTag tag : subjectTagRepository.findByOwnerIdOrderByCreatedAtAsc(userId)) {
+            if (!subjectNames.contains(tag.getName()) && !subjectTagRepository.isUsed(tag.getId())) {
+                subjectTagRepository.delete(tag);
+            }
+        }
     }
 
     @Transactional
@@ -168,7 +214,8 @@ public class MistakeService {
                                   List<String> solutionImageNames,
                                   Boolean mastered,
                                   Long statusId,
-                                  List<Long> subjectTagIds) throws IOException {
+                                  List<Long> subjectTagIds,
+                                  List<Long> chunkIds) throws IOException {
         User owner = userRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("User not found"));
         MistakeQuestion mistake = new MistakeQuestion();
         mistake.setOwner(owner);
@@ -178,6 +225,7 @@ public class MistakeService {
         applyStatus(mistake, userId, mastered, statusId);
         applySubjectTags(mistake, userId, subjectTagIds);
         mistakeRepository.save(mistake);
+        applyLinkedChunks(mistake, userId, chunkIds, MistakeQuestionChunkSourceType.MANUAL, true);
         applyImageAttachments(mistake, userId, MistakeAttachmentType.QUESTION, questionImageFiles, questionImageNames);
         applyImageAttachments(mistake, userId, MistakeAttachmentType.SOLUTION, solutionImageFiles, solutionImageNames);
         return toResponse(mistake);
@@ -190,19 +238,25 @@ public class MistakeService {
                                   MultipartFile questionAttachmentFile,
                                   List<MultipartFile> questionImageFiles,
                                   List<String> questionImageNames,
+                                  List<Long> retainedQuestionAttachmentIds,
                                   String solutionText,
                                   MultipartFile solutionFile,
                                   List<MultipartFile> solutionImageFiles,
                                   List<String> solutionImageNames,
+                                  List<Long> retainedSolutionAttachmentIds,
                                   Boolean mastered,
                                   Long statusId,
-                                  List<Long> subjectTagIds) throws IOException {
+                                  List<Long> subjectTagIds,
+                                  List<Long> chunkIds) throws IOException {
         MistakeQuestion mistake = requireMistake(mistakeId, userId);
         applyQuestion(mistake, userId, questionText, questionAttachmentFile);
         mistake.setSolutionText(blankToNull(solutionText));
         applySolutionFile(mistake, userId, solutionFile);
         applyStatus(mistake, userId, mastered, statusId);
         applySubjectTags(mistake, userId, subjectTagIds);
+        applyLinkedChunks(mistake, userId, chunkIds, MistakeQuestionChunkSourceType.MANUAL, true);
+        retainImageAttachments(mistake, MistakeAttachmentType.QUESTION, retainedQuestionAttachmentIds);
+        retainImageAttachments(mistake, MistakeAttachmentType.SOLUTION, retainedSolutionAttachmentIds);
         applyImageAttachments(mistake, userId, MistakeAttachmentType.QUESTION, questionImageFiles, questionImageNames);
         applyImageAttachments(mistake, userId, MistakeAttachmentType.SOLUTION, solutionImageFiles, solutionImageNames);
         return toResponse(mistake);
@@ -216,11 +270,52 @@ public class MistakeService {
     }
 
     @Transactional
+    public MistakeResponse createFromTeacher(Long userId,
+                                             Long chunkId,
+                                             String questionText,
+                                             String solutionText,
+                                             Boolean feedbackAlreadyForgot,
+                                             List<Long> subjectTagIds) {
+        User owner = userRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("User not found"));
+        KnowledgeChunk chunk = chunkInteractionService.requireOwnedChunk(chunkId, userId);
+        MistakeQuestion mistake = new MistakeQuestion();
+        mistake.setOwner(owner);
+        mistake.setQuestionText(questionText == null ? "" : questionText.trim());
+        if (mistake.getQuestionText().isBlank()) {
+            throw new IllegalArgumentException("Question text is required");
+        }
+        mistake.setSolutionText(blankToNull(solutionText));
+        mistake.setMastered(false);
+        applySubjectTags(mistake, userId, subjectTagIds);
+        mistakeRepository.save(mistake);
+        linkChunk(mistake, chunk, MistakeQuestionChunkSourceType.TEACHER);
+        if (!Boolean.TRUE.equals(feedbackAlreadyForgot)) {
+            chunkInteractionService.recordPracticeResult(userId, List.of(chunkId), false);
+        }
+        return toResponse(mistake);
+    }
+
+    @Transactional
+    public PracticeResultResponse recordPracticeResult(Long mistakeId, Long userId, boolean correct) {
+        MistakeQuestion mistake = requireMistake(mistakeId, userId);
+        MistakePracticeEvent event = new MistakePracticeEvent();
+        event.setOwnerId(userId);
+        event.setMistakeId(mistake.getId());
+        event.setCorrect(correct);
+        practiceEventRepository.save(event);
+        List<MistakeQuestionChunk> links = mistakeChunkRepository.findByMistakeId(mistake.getId());
+        List<Long> chunkIds = links.stream().map(link -> link.getChunk().getId()).toList();
+        int updated = chunkInteractionService.recordPracticeResult(userId, chunkIds, correct);
+        return new PracticeResultResponse(mistake.getId(), correct, updated, linkedChunks(mistake));
+    }
+
+    @Transactional
     public void delete(Long mistakeId, Long userId) throws IOException {
         MistakeQuestion mistake = requireMistake(mistakeId, userId);
         deleteAllAttachments(mistake);
         deleteQuestionFile(mistake);
         deleteSolutionFile(mistake);
+        mistakeChunkRepository.deleteAll(mistakeChunkRepository.findByMistakeId(mistake.getId()));
         mistakeRepository.delete(mistake);
     }
 
@@ -319,7 +414,6 @@ public class MistakeService {
         if (selected.isEmpty()) {
             return;
         }
-        deleteAttachments(mistake, type);
         if (type == MistakeAttachmentType.QUESTION) {
             deleteQuestionFile(mistake);
         } else {
@@ -340,6 +434,18 @@ public class MistakeService {
             attachment.setStoredPath(stored.path().toString());
             attachment.setContentType(stored.contentType());
             attachmentRepository.save(attachment);
+        }
+    }
+
+    private void retainImageAttachments(MistakeQuestion mistake,
+                                        MistakeAttachmentType type,
+                                        List<Long> retainedAttachmentIds) throws IOException {
+        java.util.Set<Long> retained = new java.util.LinkedHashSet<>(normalizeIds(retainedAttachmentIds));
+        for (MistakeAttachment attachment : attachmentRepository.findByMistakeIdAndTypeOrderByCreatedAtAsc(mistake.getId(), type)) {
+            if (!retained.contains(attachment.getId())) {
+                Files.deleteIfExists(Path.of(attachment.getStoredPath()));
+                attachmentRepository.delete(attachment);
+            }
         }
     }
 
@@ -372,6 +478,48 @@ public class MistakeService {
             throw new IllegalArgumentException("学科标签不存在或无权访问");
         }
         mistake.setSubjectTags(new LinkedHashSet<>(tags));
+    }
+
+    private void linkChunk(MistakeQuestion mistake, KnowledgeChunk chunk, MistakeQuestionChunkSourceType sourceType) {
+        if (mistakeChunkRepository.existsByMistakeIdAndChunkId(mistake.getId(), chunk.getId())) {
+            return;
+        }
+        MistakeQuestionChunk link = new MistakeQuestionChunk();
+        link.setMistake(mistake);
+        link.setChunk(chunk);
+        link.setSourceType(sourceType);
+        mistakeChunkRepository.save(link);
+    }
+
+    private void applyLinkedChunks(MistakeQuestion mistake,
+                                   Long userId,
+                                   List<Long> chunkIds,
+                                   MistakeQuestionChunkSourceType sourceType,
+                                   boolean recordWrongForNewLinks) {
+        List<Long> normalizedIds = normalizeIds(chunkIds);
+        List<MistakeQuestionChunk> existing = mistakeChunkRepository.findByMistakeId(mistake.getId());
+        if (normalizedIds.isEmpty()) {
+            mistakeChunkRepository.deleteAll(existing);
+            return;
+        }
+        java.util.Set<Long> targetIds = new java.util.LinkedHashSet<>(normalizedIds);
+        for (MistakeQuestionChunk link : existing) {
+            if (!targetIds.contains(link.getChunk().getId())) {
+                mistakeChunkRepository.delete(link);
+            }
+        }
+        List<Long> newlyLinked = new ArrayList<>();
+        for (Long chunkId : targetIds) {
+            if (mistakeChunkRepository.existsByMistakeIdAndChunkId(mistake.getId(), chunkId)) {
+                continue;
+            }
+            KnowledgeChunk chunk = chunkInteractionService.requireOwnedChunk(chunkId, userId);
+            linkChunk(mistake, chunk, sourceType);
+            newlyLinked.add(chunkId);
+        }
+        if (recordWrongForNewLinks && !newlyLinked.isEmpty()) {
+            chunkInteractionService.recordPracticeResult(userId, newlyLinked, false);
+        }
     }
 
     private List<Long> normalizeIds(List<Long> ids) {
@@ -490,9 +638,35 @@ public class MistakeService {
                 mistake.isMastered(),
                 status == null ? null : status.getId(),
                 statusName,
+                linkedChunks(mistake),
                 mistake.getCreatedAt(),
                 mistake.getUpdatedAt()
         );
+    }
+
+    private List<LinkedChunkResponse> linkedChunks(MistakeQuestion mistake) {
+        if (mistake.getId() == null) {
+            return List.of();
+        }
+        return mistakeChunkRepository.findByMistakeId(mistake.getId()).stream()
+                .map(MistakeQuestionChunk::getChunk)
+                .map(chunk -> new LinkedChunkResponse(
+                        chunk.getId(),
+                        chunk.getFile().getOriginalName(),
+                        chunk.getPageNumber(),
+                        chunkExcerpt(chunk.getContent()),
+                        chunk.getMasteryRate(),
+                        chunk.getCiteCount(),
+                        chunk.getCorrectHitCount(),
+                        chunk.getWrongHitCount(),
+                        chunk.getLastPracticedAt()
+                ))
+                .toList();
+    }
+
+    private String chunkExcerpt(String content) {
+        String normalized = content == null ? "" : content.replaceAll("\\s+", " ").trim();
+        return normalized.length() > 180 ? normalized.substring(0, 180) + "..." : normalized;
     }
 
     private List<MistakeAttachmentResponse> questionAttachments(MistakeQuestion mistake) {

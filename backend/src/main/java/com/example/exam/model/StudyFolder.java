@@ -25,6 +25,12 @@ public class StudyFolder {
     @Column(nullable = false, columnDefinition = "integer default 1")
     private int depth = 1;
 
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean subjectFolder = false;
+
+    @Column(nullable = false, columnDefinition = "integer default 0")
+    private int subjectOrder = 0;
+
     @Column(nullable = false)
     private Instant createdAt = Instant.now();
 
@@ -70,6 +76,22 @@ public class StudyFolder {
 
     public void setDepth(int depth) {
         this.depth = depth;
+    }
+
+    public boolean isSubjectFolder() {
+        return subjectFolder;
+    }
+
+    public void setSubjectFolder(boolean subjectFolder) {
+        this.subjectFolder = subjectFolder;
+    }
+
+    public int getSubjectOrder() {
+        return subjectOrder;
+    }
+
+    public void setSubjectOrder(int subjectOrder) {
+        this.subjectOrder = subjectOrder;
     }
 
     public Instant getCreatedAt() {

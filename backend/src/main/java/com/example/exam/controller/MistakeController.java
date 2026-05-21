@@ -2,9 +2,12 @@ package com.example.exam.controller;
 
 import com.example.exam.dto.MistakeDtos.CreateMistakeStatusRequest;
 import com.example.exam.dto.MistakeDtos.CreateMistakeSubjectTagRequest;
+import com.example.exam.dto.MistakeDtos.CreateMistakeFromTeacherRequest;
 import com.example.exam.dto.MistakeDtos.MistakeResponse;
 import com.example.exam.dto.MistakeDtos.MistakeSubjectTagResponse;
 import com.example.exam.dto.MistakeDtos.MistakeStatusResponse;
+import com.example.exam.dto.MistakeDtos.PracticeResultRequest;
+import com.example.exam.dto.MistakeDtos.PracticeResultResponse;
 import com.example.exam.dto.MistakeDtos.RecognizeTextResponse;
 import com.example.exam.dto.MistakeDtos.UpdateMistakeStatusRequest;
 import com.example.exam.dto.MistakeDtos.UpdateMistakeStatusSelectionRequest;
@@ -118,10 +121,18 @@ public class MistakeController {
                                   @RequestParam(required = false) List<String> solutionImageNames,
                                   @RequestParam(defaultValue = "false") Boolean mastered,
                                   @RequestParam(required = false) Long statusId,
-                                  @RequestParam(required = false) List<Long> subjectTagIds) throws IOException {
+                                  @RequestParam(required = false) List<Long> subjectTagIds,
+                                  @RequestParam(required = false) List<Long> chunkIds) throws IOException {
         User user = currentUserService.user();
         return mistakeService.create(user.getId(), questionText, questionAttachmentFile, questionImageFiles, questionImageNames,
-                solutionText, solutionFile, solutionImageFiles, solutionImageNames, mastered, statusId, subjectTagIds);
+                solutionText, solutionFile, solutionImageFiles, solutionImageNames, mastered, statusId, subjectTagIds, chunkIds);
+    }
+
+    @PostMapping("/mistakes/from-teacher-question")
+    public MistakeResponse createFromTeacher(@Valid @RequestBody CreateMistakeFromTeacherRequest request) {
+        User user = currentUserService.user();
+        return mistakeService.createFromTeacher(user.getId(), request.chunkId(), request.questionText(),
+                request.solutionText(), request.feedbackAlreadyForgot(), request.subjectTagIds());
     }
 
     @PutMapping("/mistakes/{mistakeId}")
@@ -130,16 +141,20 @@ public class MistakeController {
                                   @RequestParam(required = false) MultipartFile questionAttachmentFile,
                                   @RequestParam(required = false) List<MultipartFile> questionImageFiles,
                                   @RequestParam(required = false) List<String> questionImageNames,
+                                  @RequestParam(required = false) List<Long> retainedQuestionAttachmentIds,
                                   @RequestParam(required = false) String solutionText,
                                   @RequestParam(required = false) MultipartFile solutionFile,
                                   @RequestParam(required = false) List<MultipartFile> solutionImageFiles,
                                   @RequestParam(required = false) List<String> solutionImageNames,
+                                  @RequestParam(required = false) List<Long> retainedSolutionAttachmentIds,
                                   @RequestParam(defaultValue = "false") Boolean mastered,
                                   @RequestParam(required = false) Long statusId,
-                                  @RequestParam(required = false) List<Long> subjectTagIds) throws IOException {
+                                  @RequestParam(required = false) List<Long> subjectTagIds,
+                                  @RequestParam(required = false) List<Long> chunkIds) throws IOException {
         User user = currentUserService.user();
         return mistakeService.update(mistakeId, user.getId(), questionText, questionAttachmentFile, questionImageFiles, questionImageNames,
-                solutionText, solutionFile, solutionImageFiles, solutionImageNames, mastered, statusId, subjectTagIds);
+                retainedQuestionAttachmentIds, solutionText, solutionFile, solutionImageFiles, solutionImageNames,
+                retainedSolutionAttachmentIds, mastered, statusId, subjectTagIds, chunkIds);
     }
 
     @PatchMapping("/mistakes/{mistakeId}/status")
@@ -147,6 +162,13 @@ public class MistakeController {
                                                @RequestBody UpdateMistakeStatusSelectionRequest request) {
         User user = currentUserService.user();
         return mistakeService.updateStatusSelection(mistakeId, user.getId(), request.mastered(), request.statusId());
+    }
+
+    @PostMapping("/mistakes/{mistakeId}/practice-result")
+    public PracticeResultResponse recordPracticeResult(@PathVariable Long mistakeId,
+                                                       @Valid @RequestBody PracticeResultRequest request) {
+        User user = currentUserService.user();
+        return mistakeService.recordPracticeResult(mistakeId, user.getId(), request.correct());
     }
 
     @DeleteMapping("/mistakes/{mistakeId}")

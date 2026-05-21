@@ -405,3 +405,66 @@ flowchart TD
 ## 12. 详细设计结论
 
 系统以 Service 层为业务中心，Controller 层保持轻量，Repository 层负责数据访问。知识库问答采用“抽取-切片-检索-rerank-prompt-生成-引用”的完整链路，错题和计划模块采用独立业务实体，整体结构清晰且符合当前项目实际。
+
+## 13. 学习画像与错题闭环补充设计
+
+### 13.1 学习档案初始化
+
+`StudyProfileService` 负责维护用户学习档案。前端登录后优先调用 `/api/study-profile`，如果返回 `onboarded=false`，展示初始化页；如果返回 `onboarded=true`，进入主界面。
+
+初始化接口 `/api/study-profile/onboarding` 接收学科数量、学科名称和考研日期。后端为每个学科自动创建一级 `StudyFolder`，并设置 `subjectFolder=true` 和 `subjectOrder`。旧账号没有 profile 时会兼容处理：已有一级文件夹则自动标记为学科文件夹，没有一级文件夹则进入初始化流程。
+
+### 13.2 Chunk 学习统计
+
+`KnowledgeChunk` 保存引用次数、正确命中次数、错误命中次数、最近访问时间和最近练习时间。掌握度计算公式为：
+
+```text
+masteryRate = (correctHitCount + 1) / (correctHitCount + 1.5 * wrongHitCount + 2)
+```
+
+`KnowledgeChunkInteractionService` 统一处理 chunk 权限校验、引用计数、反馈计数和统计响应。答疑模式只对最终返回前端的来源片段增加 `citeCount`，用户点击“很清楚 / 忘记了”时分别增加 `correctHitCount` 或 `wrongHitCount`。
+
+### 13.3 知识画像聚合
+
+`KnowledgeProfileService` 提供总览、学科画像、教材画像、薄弱知识点和 chunk 搜索能力。
+
+画像统计规则：
+
+- 覆盖率只统计 `feedbackCount > 0` 的知识片段。
+- 学科画像按一级学科文件夹及其子文件夹聚合。
+- 教材画像按 `StudyFile` 聚合，并支持按学科文件夹过滤。
+- 薄弱知识点只包含已反馈 chunk，并按复习优先级降序排列。
+- 没有学科祖先的 chunk 归入“未分类”。
+
+复习优先级：
+
+```text
+forgetRisk = min(1, daysSinceLastPracticed / 14)
+attentionScore = normalized(log(1 + citeCount))
+reviewPriority = (1 - masteryRate) * 0.6 + forgetRisk * 0.25 + attentionScore * 0.15
+```
+
+### 13.4 教师模式
+
+教师模式由 `/api/chat/teacher/question` 提供。请求包含当前文件夹、可选学科文件夹、提问要求和已问过的 `excludeChunkIds`。后端在限定范围内选择 chunk，并返回一个问题、参考答案、来源信息和 `chunkId`。
+
+选题评分：
+
+```text
+score = relevanceScore * 0.50 + reviewPriority * 0.45 + randomFactor * 0.05
+```
+
+教师模式 prompt 要求模型只基于当前 chunk 明确出现的信息出题。后端会对明显超出证据范围的问题做保守兜底，降低“资料只简单提到概念，但题目要求比较或展开”的风险。
+
+### 13.5 错题关联与刷题回写
+
+`MistakeQuestionChunk` 维护错题与知识片段的多对多关联。上传错题、修改错题和教师题加入错题都可以保存关联 chunk。错题表单的 chunk 搜索支持按学科文件夹、资料文件和关键词逐级缩小范围。
+
+刷题结果通过 `/api/mistakes/{mistakeId}/practice-result` 写入：
+
+- `correct=true` 时，所有关联 chunk 增加 `correctHitCount`。
+- `correct=false` 时，所有关联 chunk 增加 `wrongHitCount`。
+- 两种结果都会更新 `lastPracticedAt` 和 `lastAccessedAt`。
+- 没有关联 chunk 的错题返回成功但 `updatedChunkCount=0`。
+
+第一版不自动修改错题 `mastered`，避免一次写对就改变错题掌握状态；用户仍可手动调整错题状态。

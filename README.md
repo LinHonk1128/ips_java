@@ -1,6 +1,6 @@
 # 智能考研系统
 
-基于 Spring Boot + Vue 的个人考研知识库系统，支持用户登录、科目文件夹、资料上传、OCR/文本抽取、知识库构建，以及基于用户 API Key 的智能问答。
+基于 Spring Boot + Vue 的个人考研知识库系统，支持用户登录、科目文件夹、资料上传、OCR/文本抽取、知识库构建、知识画像、错题复盘，以及基于用户 API Key 的智能问答。
 
 ## 功能
 
@@ -11,7 +11,10 @@
 - 上传后自动抽取文本；图片 OCR 默认调用本机 `tesseract` 命令。
 - 抽取文本可在前端即时编辑，保存后切分为知识片段。
 - 答疑模式：基于当前文件夹知识库回答，并返回来源片段。
-- 教师模式：AI 模拟学生，基于知识点向用户提问。
+- 答疑来源支持“很清楚 / 忘记了”反馈，回写知识片段掌握度。
+- 教师模式：按学科、资料和薄弱程度生成可追溯到知识片段的问题。
+- 错题集支持关联知识片段，刷题时记录“写对了 / 写错了”并回写知识画像。
+- 知识画像：按个人、学科、教材和薄弱知识点统计掌握度、覆盖率和复习优先级。
 - 支持 OpenAI 兼容接口，可填写模型名、Endpoint 和自己的 API Key。
 
 ## 项目结构
@@ -22,6 +25,17 @@ frontend/  Vue + Vite 前端
 uploads/   运行后自动生成的本地上传目录
 data/      运行后自动生成的 H2 数据库目录
 ```
+
+## 文档
+
+- `docs/01-feasibility-analysis.md`：可行性分析。
+- `docs/02-system-architecture.md`：系统架构。
+- `docs/03-software-requirements-specification.md`：软件需求规格说明。
+- `docs/04-high-level-design.md`：概要设计。
+- `docs/05-detailed-design.md`：详细设计。
+- `docs/06-user-manual.md`：用户操作手册。
+- `docs/08-learning-profile-teacher-mistake-upgrade.md`：学习画像、教师模式与错题闭环改造说明。
+- `docs/knowledge-qa-process.md`：知识问答全过程说明。
 
 ## 启动后端
 

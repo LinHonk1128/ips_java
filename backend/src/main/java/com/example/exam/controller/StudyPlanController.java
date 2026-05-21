@@ -55,6 +55,12 @@ public class StudyPlanController {
         return studyPlanService.create(user, request);
     }
 
+    @PostMapping("/profile-suggestion")
+    public StudyPlanItemResponse createFromProfileSuggestion(@Valid @RequestBody StudyPlanItemRequest request) {
+        User user = currentUserService.user();
+        return studyPlanService.createFromAi(user, request);
+    }
+
     @PutMapping("/{itemId}")
     public StudyPlanItemResponse update(@PathVariable Long itemId, @Valid @RequestBody StudyPlanItemRequest request) {
         User user = currentUserService.user();

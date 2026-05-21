@@ -31,6 +31,35 @@
       </form>
     </section>
 
+    <section v-else-if="studyProfile && !studyProfile.onboarded" class="auth-panel onboarding-panel" aria-label="学习信息初始化">
+      <div class="auth-copy">
+        <div class="brand-mark">研</div>
+        <h1>设置学习画像基础信息</h1>
+        <p>先确定考研日期和一级学科文件夹，后续资料、问答、错题和画像都会按这些学科聚合。</p>
+      </div>
+      <form class="auth-card onboarding-card" @submit.prevent="submitOnboarding">
+        <label>
+          考研日期
+          <input v-model="onboardingForm.examDate" required type="date" :min="todayIso" />
+        </label>
+        <label>
+          学科数量
+          <input v-model.number="onboardingForm.subjectCount" type="number" min="1" max="12" @change="syncOnboardingSubjects" />
+        </label>
+        <div class="onboarding-subjects">
+          <label v-for="(_, index) in onboardingForm.subjects" :key="index">
+            学科 {{ index + 1 }}
+            <input v-model="onboardingForm.subjects[index]" required maxlength="120" placeholder="如：数学" />
+          </label>
+        </div>
+        <button class="primary-btn" type="submit" :disabled="loading || !canSubmitOnboarding">
+          <FolderPlus :size="18" />
+          创建学科文件夹
+        </button>
+        <p v-if="error" class="error-text">{{ error }}</p>
+      </form>
+    </section>
+
     <section v-else class="workspace">
       <aside class="sidebar">
         <div class="side-top">
@@ -79,7 +108,7 @@
             v-for="folder in folderTree"
             :key="folder.id"
             class="folder-item"
-            :class="{ selected: activeFolder?.id === folder.id }"
+            :class="{ selected: activeFolder?.id === folder.id, 'subject-root': folder.subjectFolder && !folder.parentId }"
             :style="{ '--folder-indent': `${(folder.depth - 1) * 18}px` }"
             @click="selectFolder(folder)"
           >
@@ -694,6 +723,13 @@
                   <span v-else v-html="renderRichText(part.text)"></span>
                 </template>
               </div>
+              <div v-if="chatForm.mode === 'TEACHER' && message.role === 'assistant' && message.teacherQuestion" class="teacher-actions">
+                <button class="secondary-btn slim" type="button" :disabled="message.feedbackType === 'CLEAR'" @click="feedbackTeacherMessage(message, 'CLEAR')">很清楚</button>
+                <button class="secondary-btn slim" type="button" :disabled="message.feedbackType === 'FORGOT'" @click="feedbackTeacherMessage(message, 'FORGOT')">忘记了</button>
+                <button class="secondary-btn slim" type="button" :disabled="message.addedToMistake" @click="addTeacherMessageToMistake(message)">添加到错题</button>
+                <button class="secondary-btn slim" type="button" @click="nextTeacherQuestion">下一题</button>
+                <span v-if="message.feedbackType" class="empty-inline">已记录：{{ message.feedbackType === 'CLEAR' ? '很清楚' : '忘记了' }}</span>
+              </div>
             </article>
             <article v-if="chatLoading" class="message assistant pending-message" aria-live="polite">
               <LoaderCircle :size="18" />
@@ -711,6 +747,15 @@
                 <button class="icon-btn mini" type="button" title="关闭" @click="activeSource = null">×</button>
               </div>
               <p>{{ activeSource.excerpt }}</p>
+              <div class="source-stats">
+                <span>掌握度 {{ formatPercent(activeSource.masteryRate) }}</span>
+                <span>引用 {{ activeSource.citeCount || 0 }}</span>
+                <span>对 {{ activeSource.correctHitCount || 0 }} / 错 {{ activeSource.wrongHitCount || 0 }}</span>
+              </div>
+              <div class="source-actions">
+                <button class="secondary-btn slim" type="button" @click="feedbackActiveSource('CLEAR')">很清楚</button>
+                <button class="secondary-btn slim" type="button" @click="feedbackActiveSource('FORGOT')">忘记了</button>
+              </div>
               <span>双击窗口可打开完整文件，并定位到这段依据。</span>
             </div>
             <div v-if="messages.length === 0" class="empty-chat">
@@ -722,8 +767,14 @@
 
           <form class="question-box" @submit.prevent="ask">
             <div class="question-main">
+              <div v-if="chatForm.mode === 'TEACHER'" class="teacher-filter">
+                <select v-model="teacherState.subjectFolderId">
+                  <option value="">当前文件夹范围</option>
+                  <option v-for="folder in subjectFolders" :key="folder.id" :value="folder.id">{{ folder.name }}</option>
+                </select>
+              </div>
               <textarea v-model="chatForm.question" :disabled="chatInputDisabled" :placeholder="chatPlaceholder" />
-              <div class="chat-options">
+              <div v-if="chatForm.mode !== 'TEACHER'" class="chat-options">
                 <label class="chat-toggle">
                   <input v-model="chatForm.useKnowledgeBase" type="checkbox" :disabled="chatLoading" @change="handleKnowledgeModeChange" />
                   <span>使用知识库</span>
@@ -741,7 +792,7 @@
             <button class="primary-btn" type="submit" :disabled="!canSubmitChat">
               <LoaderCircle v-if="chatLoading" :size="18" class="spin-icon" />
               <Send v-else :size="18" />
-              {{ chatLoading ? '生成中' : '发送' }}
+              {{ chatLoading ? '生成中' : (chatForm.mode === 'TEACHER' ? '生成问题' : '发送') }}
             </button>
           </form>
         </section>
@@ -906,6 +957,216 @@
           </div>
         </section>
 
+        <section v-else-if="activePage === 'profile'" class="page-panel profile-page">
+          <div class="section-head split">
+            <div>
+              <h3>知识画像总览</h3>
+              <p>根据知识片段引用、反馈、错题和刷题结果统计掌握情况。</p>
+            </div>
+            <button class="secondary-btn slim" type="button" :disabled="profileLoading" @click="loadKnowledgeProfile">
+              <RefreshCw :size="16" />
+              刷新画像
+            </button>
+          </div>
+
+          <div class="profile-grid enhanced">
+            <article v-for="metric in profileMetricCards" :key="metric.label" class="profile-card metric-card" :style="{ '--metric-accent': metric.accent }">
+              <div class="metric-card-head">
+                <span>{{ metric.label }}</span>
+                <component :is="metric.icon" :size="20" />
+              </div>
+              <strong>{{ metric.value }}</strong>
+              <div class="metric-rail" aria-hidden="true">
+                <i :style="{ width: `${metric.progress}%` }"></i>
+              </div>
+              <em>{{ metric.detail }}</em>
+            </article>
+          </div>
+
+          <section class="profile-block diagnosis-panel">
+            <div class="diagnosis-head">
+              <div>
+                <h3>学习诊断</h3>
+                <p>每天首次登录自动诊断一次；需要重新判断时，可以手动刷新。</p>
+              </div>
+              <div class="diagnosis-actions">
+                <div class="segmented compact">
+                  <button
+                    v-for="days in [7, 14, 30]"
+                    :key="days"
+                    type="button"
+                    :class="{ active: profileTrendDays === days }"
+                    @click="changeProfileTrendDays(days)"
+                  >
+                    {{ days }} 天
+                  </button>
+                </div>
+                <button class="secondary-btn slim" type="button" :disabled="profileDiagnosisLoading" @click="refreshProfileDiagnosis">
+                  <LoaderCircle v-if="profileDiagnosisLoading" :size="16" class="spin-icon" />
+                  <RefreshCw v-else :size="16" />
+                  刷新诊断
+                </button>
+              </div>
+            </div>
+            <div class="diagnosis-chat-bubble" :class="{ loading: profileDiagnosisLoading, notice: profileDiagnosisInsufficient }">
+              <LoaderCircle v-if="profileDiagnosisLoading" :size="20" class="spin-icon" />
+              <p>{{ profileDiagnosisMessage }}</p>
+            </div>
+            <div v-if="!profileDiagnosisLoading && profileDiagnosisItems.length > 0" class="diagnosis-grid">
+              <article v-for="item in profileDiagnosisItems" :key="item.label" class="diagnosis-card" :class="item.severity?.toLowerCase()">
+                <span>{{ item.label }}</span>
+                <strong>{{ item.value }}</strong>
+                <em>{{ item.detail }}</em>
+              </article>
+            </div>
+          </section>
+
+          <div class="profile-charts">
+            <section class="profile-block chart-panel">
+              <h3>学科掌握率</h3>
+              <div ref="profileSubjectChartRef" class="profile-chart" role="img" aria-label="学科掌握率柱状图"></div>
+            </section>
+            <section class="profile-block chart-panel">
+              <h3>掌握等级分布</h3>
+              <div ref="profileDistributionChartRef" class="profile-chart" role="img" aria-label="掌握等级分布环形图"></div>
+            </section>
+            <section class="profile-block chart-panel wide">
+              <h3>学习趋势</h3>
+              <div ref="profileTrendChartRef" class="profile-chart trend" role="img" aria-label="近 14 天学习趋势折线图"></div>
+            </section>
+            <section class="profile-block chart-panel">
+              <h3>学习活跃热力图</h3>
+              <div ref="profileHeatmapChartRef" class="profile-chart" role="img" aria-label="学习活跃日历热力图"></div>
+            </section>
+            <section class="profile-block chart-panel">
+              <div class="chart-title-row">
+                <h3>复习压力趋势</h3>
+                <label class="chart-filter">
+                  <span>范围</span>
+                  <select v-model="profilePressureSubjectId" @change="changeProfilePressureSubject">
+                    <option value="all">全科</option>
+                    <option
+                      v-for="subject in profileSubjects"
+                      :key="subject.subjectFolderId"
+                      :value="String(subject.subjectFolderId)"
+                    >
+                      {{ subject.subjectName }}
+                    </option>
+                  </select>
+                </label>
+              </div>
+              <div ref="profilePressureChartRef" class="profile-chart" role="img" aria-label="复习压力趋势图"></div>
+            </section>
+          </div>
+
+          <section class="profile-block recommendation-panel">
+            <div class="section-head split">
+              <div>
+                <h3>今日复习建议</h3>
+                <p>按遗忘风险、错题反馈、引用频率和考研倒计时排序。</p>
+              </div>
+              <button class="secondary-btn slim" type="button" :disabled="profileLoading || profileDiagnosisLoading" @click="refreshProfileRecommendations">
+                <RefreshCw :size="16" />
+                更新建议
+              </button>
+            </div>
+            <article v-for="suggestion in profileSuggestions" :key="suggestion.chunkId" class="recommendation-row">
+              <div>
+                <strong>{{ suggestion.title }}</strong>
+                <p>{{ suggestion.reason }} · 风险 {{ Math.round(suggestion.riskScore || 0) }} · 预计 {{ suggestion.estimatedMinutes || 30 }} 分钟</p>
+                <span>{{ suggestion.fileName }} · 第 {{ suggestion.pageNumber || 1 }} 页</span>
+              </div>
+              <div class="recommendation-actions">
+                <button class="secondary-btn slim" type="button" @click="openTeacherForSuggestion(suggestion)">进入教师模式</button>
+                <button class="primary-btn compact" type="button" :disabled="loading" @click="addSuggestionToPlan(suggestion)">
+                  <CalendarPlus :size="16" />
+                  加入计划
+                </button>
+              </div>
+            </article>
+            <div v-if="profileSuggestions.length === 0" class="empty-note">暂无高风险复习建议，可以先从未评估知识点开始练习。</div>
+          </section>
+
+          <div class="profile-sections">
+            <section class="profile-block profile-subject-list wide">
+              <div class="profile-block-heading">
+                <div>
+                  <h3>学科画像</h3>
+                  <p>各学科掌握度与薄弱点总览</p>
+                </div>
+                <span>{{ profileSubjects.length }} 个学科</span>
+              </div>
+              <div v-if="profileSubjects.length > 0" class="subject-profile-grid">
+                <article
+                  v-for="(subject, index) in profileSubjects"
+                  :key="subject.subjectFolderId"
+                  class="subject-profile-card"
+                  :style="{
+                    '--subject-progress': subjectProgressDegrees(subject.masteryRate),
+                    '--subject-accent': subjectAccent(index)
+                  }"
+                >
+                  <div class="subject-card-top">
+                    <span class="subject-icon-badge">
+                      <BookOpenCheck :size="18" />
+                    </span>
+                    <div class="mastery-ring" :aria-label="`${subject.subjectName}掌握度${formatPercent(subject.masteryRate)}`">
+                      <span>{{ formatPercent(subject.masteryRate) }}</span>
+                    </div>
+                  </div>
+                  <div class="subject-card-main">
+                    <strong>{{ subject.subjectName }}</strong>
+                    <span>掌握度</span>
+                  </div>
+                  <div class="subject-metrics">
+                    <div>
+                      <em>覆盖率</em>
+                      <strong>{{ formatPercent(subject.coverageRate) }}</strong>
+                    </div>
+                    <div>
+                      <em>近 14 天</em>
+                      <strong>{{ subject.recentPracticeCount || 0 }} 次</strong>
+                    </div>
+                  </div>
+                  <div class="subject-risk-state" :class="{ warn: (subject.highRiskChunkCount || 0) > 0 }">
+                    <span v-if="(subject.highRiskChunkCount || 0) > 0">⚠ 重点突破 {{ subject.highRiskChunkCount }} 个</span>
+                    <span v-else>✓ 当前状态良好暂无高风险知识点</span>
+                  </div>
+                </article>
+              </div>
+              <div v-if="profileSubjects.length === 0" class="empty-note">暂无学科画像数据。</div>
+            </section>
+
+            <section class="profile-block wide">
+              <h3>薄弱知识点</h3>
+              <article
+                v-for="chunk in profileWeakChunks"
+                :key="chunk.chunkId"
+                class="weak-chunk-row"
+                tabindex="0"
+                title="双击打开对应文件内容"
+                @dblclick="openWeakChunkInEditor(chunk)"
+                @keydown.enter="openWeakChunkInEditor(chunk)"
+              >
+                <div>
+                  <strong>{{ displayFileName({ originalName: chunk.fileName }) }} · 第 {{ chunk.pageNumber || 1 }} 页</strong>
+                  <p>{{ chunk.excerpt }}</p>
+                </div>
+                <div class="weak-chunk-meta">
+                  <span>掌握度 {{ formatPercent(chunk.masteryRate) }}</span>
+                  <span>置信度 {{ confidenceLabel(chunk.confidenceLevel) }}</span>
+                  <span>优先级 {{ formatPercent(chunk.reviewPriority) }}</span>
+                  <span>最近练习 {{ formatDateTime(chunk.lastPracticedAt) }}</span>
+                  <span>错 {{ chunk.wrongHitCount }} / 对 {{ chunk.correctHitCount }}</span>
+                  <button class="secondary-btn slim" type="button" @click.stop="openWeakChunkInEditor(chunk)">打开原文</button>
+                  <button class="secondary-btn slim" type="button" @click.stop="openTeacherForWeakChunk(chunk)">进入教师模式</button>
+                </div>
+              </article>
+              <div v-if="profileWeakChunks.length === 0" class="empty-note">暂无已反馈的薄弱知识点。</div>
+            </section>
+          </div>
+        </section>
+
         <section v-else-if="activePage === 'mistakes'" class="page-panel mistakes-page">
           <div v-if="!mistakeModule" class="mistake-module-landing">
             <div class="mistake-module-menu">
@@ -994,7 +1255,8 @@
               </label>
               <div class="image-attachment-grid">
                 <article v-for="item in questionImageItems" :key="item.id" class="image-attachment-item">
-                  <img :src="item.previewUrl" alt="题目图片缩略图" @dblclick="enlargeAttachment(item)" />
+                  <img v-if="item.previewUrl" :src="item.previewUrl" alt="题目图片缩略图" @dblclick="enlargeAttachment(item)" />
+                  <div v-else class="image-attachment-placeholder">已保存图片</div>
                   <input v-model="item.displayName" maxlength="180" placeholder="图片名称" />
                   <button class="icon-btn mini danger" type="button" title="移除图片" @click="removeImageItem('question', item.id)">
                     <Trash2 :size="14" />
@@ -1012,7 +1274,8 @@
               </label>
               <div class="image-attachment-grid">
                 <article v-for="item in solutionImageItems" :key="item.id" class="image-attachment-item">
-                  <img :src="item.previewUrl" alt="解析图片缩略图" @dblclick="enlargeAttachment(item)" />
+                  <img v-if="item.previewUrl" :src="item.previewUrl" alt="解析图片缩略图" @dblclick="enlargeAttachment(item)" />
+                  <div v-else class="image-attachment-placeholder">已保存图片</div>
                   <input v-model="item.displayName" maxlength="180" placeholder="图片名称" />
                   <button class="icon-btn mini danger" type="button" title="移除图片" @click="removeImageItem('solution', item.id)">
                     <Trash2 :size="14" />
@@ -1057,17 +1320,61 @@
               <div class="mistake-label-block">
                 <strong>科目</strong>
                 <div class="mistake-status-picker" aria-label="科目标签">
-                  <button
-                    v-for="tag in mistakeSubjectTags"
-                    :key="tag.id"
-                    class="status-pill"
-                    :class="{ active: mistakeForm.subjectTagIds.includes(tag.id) }"
-                    type="button"
-                    @click="toggleIdInArray(mistakeForm.subjectTagIds, tag.id)"
-                  >
-                    {{ tag.name }}
+                <button
+                  v-for="item in mistakeSubjectOptions"
+                  :key="item.folder.id"
+                  class="status-pill"
+                  :class="{ active: mistakeForm.subjectTagIds.includes(item.tag.id) }"
+                  type="button"
+                  @click="toggleIdInArray(mistakeForm.subjectTagIds, item.tag.id)"
+                >
+                  {{ item.folder.name }}
+                </button>
+                  <span v-if="mistakeSubjectOptions.length === 0" class="empty-inline">暂无学科文件夹，请先到个人设置中维护考研科目。</span>
+                </div>
+              </div>
+
+              <div class="mistake-label-block">
+                <strong>关联知识片段</strong>
+                <div class="chunk-link-filters">
+                  <select v-model="mistakeChunkSubjectFolderId" @change="handleMistakeChunkSubjectChange">
+                    <option value="">全部学科</option>
+                    <option v-for="folder in subjectFolders" :key="folder.id" :value="folder.id">{{ folder.name }}</option>
+                  </select>
+                  <select v-model="mistakeChunkFileId" :disabled="mistakeChunkFiles.length === 0">
+                    <option value="">全部资料</option>
+                    <option v-for="file in mistakeChunkFiles" :key="file.fileId" :value="file.fileId">{{ displayFileName({ originalName: file.fileName }) }}</option>
+                  </select>
+                </div>
+                <div class="chunk-link-search">
+                  <input v-model="mistakeChunkQuery" maxlength="120" placeholder="搜索知识片段，如：CPU、无名管道" @keydown.enter.prevent="searchMistakeChunks" />
+                  <button class="secondary-btn slim" type="button" :disabled="mistakeChunkSearchLoading" @click="searchMistakeChunks">
+                    <Search :size="16" />
+                    搜索
                   </button>
-                  <span v-if="mistakeSubjectTags.length === 0" class="empty-inline">暂无科目标签，请返回入口新增标签。</span>
+                </div>
+                <div v-if="mistakeForm.linkedChunks.length" class="linked-chunks selected">
+                  <span v-for="chunk in mistakeForm.linkedChunks" :key="chunk.chunkId" class="linked-chunk-pill">
+                    <button class="text-link" type="button" @click="openChunkDetail(chunk)">
+                      {{ displayFileName({ originalName: chunk.fileName }) }} · 第 {{ chunk.pageNumber || 1 }} 页
+                    </button>
+                    <button class="icon-btn mini" type="button" title="移除关联" @click="removeMistakeLinkedChunk(chunk.chunkId)">×</button>
+                  </span>
+                </div>
+                <p v-else class="chunk-link-hint">未关联知识片段时，刷题结果不会回写知识画像。</p>
+                <div v-if="mistakeChunkCandidates.length" class="chunk-candidate-list">
+                  <button
+                    v-for="chunk in mistakeChunkCandidates"
+                    :key="chunk.chunkId"
+                    class="chunk-candidate"
+                    type="button"
+                    :disabled="isMistakeChunkLinked(chunk.chunkId)"
+                    @click="addMistakeLinkedChunk(chunk)"
+                  >
+                    <strong>{{ displayFileName({ originalName: chunk.fileName }) }} · 第 {{ chunk.pageNumber || 1 }} 页</strong>
+                    <span>{{ chunk.excerpt }}</span>
+                    <em>掌握度 {{ formatPercent(chunk.masteryRate) }}</em>
+                  </button>
                 </div>
               </div>
 
@@ -1142,16 +1449,16 @@
                 <strong>科目筛选</strong>
                 <div class="mistake-status-picker">
                   <button
-                    v-for="tag in mistakeSubjectTags"
-                    :key="tag.id"
-                    class="status-pill"
-                    :class="{ active: practiceForm.subjectTagIds.includes(tag.id) }"
-                    type="button"
-                    @click="toggleIdInArray(practiceForm.subjectTagIds, tag.id)"
-                  >
-                    {{ tag.name }}
-                  </button>
-                  <span v-if="mistakeSubjectTags.length === 0" class="empty-inline">暂无科目标签</span>
+                  v-for="item in mistakeSubjectOptions"
+                  :key="item.folder.id"
+                  class="status-pill"
+                  :class="{ active: practiceForm.subjectTagIds.includes(item.tag.id) }"
+                  type="button"
+                  @click="toggleIdInArray(practiceForm.subjectTagIds, item.tag.id)"
+                >
+                  {{ item.folder.name }}
+                </button>
+                  <span v-if="mistakeSubjectOptions.length === 0" class="empty-inline">暂无学科文件夹</span>
                 </div>
               </div>
               <button class="primary-btn compact" type="submit" :disabled="loading">
@@ -1188,6 +1495,13 @@
                 <button class="secondary-btn slim" type="button" :disabled="practiceIndex === 0" @click="nextPracticeQuestion(-1)">上一题</button>
                 <button class="secondary-btn slim" type="button" :disabled="practiceIndex >= practiceQuestions.length - 1" @click="nextPracticeQuestion(1)">下一题</button>
                 <button class="secondary-btn slim" type="button" @click="closePractice">退出</button>
+              </div>
+              <div class="practice-actions">
+                <button class="secondary-btn slim" type="button" :disabled="practiceResultFor(practiceCurrentQuestion)" @click="recordPracticeResult(practiceCurrentQuestion, true)">写对了</button>
+                <button class="secondary-btn slim" type="button" :disabled="practiceResultFor(practiceCurrentQuestion)" @click="recordPracticeResult(practiceCurrentQuestion, false)">写错了</button>
+                <span v-if="practiceResultFor(practiceCurrentQuestion)" class="empty-inline">
+                  已记录{{ practiceResultFor(practiceCurrentQuestion).correct ? '写对了' : '写错了' }}，更新 {{ practiceResultFor(practiceCurrentQuestion).updatedChunkCount }} 个知识片段
+                </span>
               </div>
               <div v-if="practiceFinished" class="practice-answer">
                 <strong>答案解析</strong>
@@ -1230,17 +1544,17 @@
               <strong>科目筛选</strong>
               <div class="mistake-status-picker">
                 <button
-                  v-for="tag in mistakeSubjectTags"
-                  :key="tag.id"
+                  v-for="item in mistakeSubjectOptions"
+                  :key="item.folder.id"
                   class="status-pill"
-                  :class="{ active: browseSubjectFilterIds.includes(tag.id) }"
+                  :class="{ active: browseSubjectFilterIds.includes(item.tag.id) }"
                   type="button"
-                  @click="toggleIdInArray(browseSubjectFilterIds, tag.id)"
+                  @click="toggleIdInArray(browseSubjectFilterIds, item.tag.id)"
                 >
-                  {{ tag.name }}
+                  {{ item.folder.name }}
                 </button>
                 <button v-if="browseSubjectFilterIds.length" class="secondary-btn slim" type="button" @click="browseSubjectFilterIds = []">清空筛选</button>
-                <span v-if="mistakeSubjectTags.length === 0" class="empty-inline">暂无科目标签</span>
+                <span v-if="mistakeSubjectOptions.length === 0" class="empty-inline">暂无学科文件夹</span>
               </div>
             </div>
 
@@ -1354,6 +1668,12 @@
                     <span v-if="!mistake.solutionText && !mistake.hasSolutionFile">暂无解析</span>
                   </div>
                 </div>
+                <div v-if="mistake.linkedChunks?.length" class="linked-chunks">
+                  <strong>关联知识片段</strong>
+                  <button v-for="chunk in mistake.linkedChunks" :key="chunk.chunkId" class="linked-chunk-button" type="button" @click.stop="openChunkDetail(chunk)">
+                    {{ displayFileName({ originalName: chunk.fileName }) }} · 掌握度 {{ formatPercent(chunk.masteryRate) }}
+                  </button>
+                </div>
                 <div class="mistake-actions">
                   <button class="secondary-btn slim" type="button" @click.stop="editMistake(mistake)">
                     <Pencil :size="15" />
@@ -1383,9 +1703,23 @@
               <img :src="enlargedAttachment.previewUrl || enlargedAttachment.url" alt="放大的附件图片" />
             </div>
           </div>
+          <div v-if="activeChunkDetail" class="chunk-detail-modal" role="dialog" aria-label="知识片段详情" @click.self="activeChunkDetail = null">
+            <article class="chunk-detail-panel">
+              <div class="source-popover-head">
+                <strong>{{ displayFileName({ originalName: activeChunkDetail.fileName }) }} · 第 {{ activeChunkDetail.pageNumber || 1 }} 页</strong>
+                <button class="icon-btn mini" type="button" title="关闭" @click="activeChunkDetail = null">×</button>
+              </div>
+              <p>{{ activeChunkDetail.excerpt }}</p>
+              <div class="source-stats">
+                <span>掌握度 {{ formatPercent(activeChunkDetail.masteryRate) }}</span>
+                <span>引用 {{ activeChunkDetail.citeCount || 0 }}</span>
+                <span>对 {{ activeChunkDetail.correctHitCount || 0 }} / 错 {{ activeChunkDetail.wrongHitCount || 0 }}</span>
+              </div>
+            </article>
+          </div>
         </section>
 
-        <section v-else class="page-panel settings-page">
+        <section v-else-if="activePage === 'settings'" class="page-panel settings-page">
           <div class="settings-layout">
             <form class="settings-form" @submit.prevent="saveAiSettings">
               <div class="section-head">
@@ -1526,12 +1860,51 @@
             </aside>
           </div>
         </section>
+
+        <section v-else class="page-panel settings-page personal-settings-page">
+          <form class="settings-form" @submit.prevent="savePersonalSettings">
+            <div class="section-head">
+              <h3>个人设置</h3>
+              <p>调整考研时间和一级学科文件夹，错题筛选会同步使用这些科目。</p>
+            </div>
+            <label>
+              考研时间
+              <input v-model="personalSettingsForm.examDate" required type="date" :min="todayIso" />
+            </label>
+            <div class="section-head compact">
+              <h3>考研科目</h3>
+              <p>这里的科目会作为“我的资料”下的一级学科文件夹。</p>
+            </div>
+            <div class="personal-subject-list">
+              <label v-for="(_, index) in personalSettingsForm.subjects" :key="index">
+                科目 {{ index + 1 }}
+                <div class="personal-subject-row">
+                  <input v-model="personalSettingsForm.subjects[index]" required maxlength="120" placeholder="如：高等数学" />
+                  <button class="icon-btn mini danger" type="button" title="移除科目" :disabled="personalSettingsForm.subjects.length <= 1" @click="removePersonalSubject(index)">
+                    <Trash2 :size="15" />
+                  </button>
+                </div>
+              </label>
+            </div>
+            <div class="settings-actions">
+              <button class="secondary-btn compact" type="button" :disabled="personalSettingsForm.subjects.length >= 12" @click="addPersonalSubject">
+                <FolderPlus :size="16" />
+                添加科目
+              </button>
+              <button class="primary-btn compact" type="submit" :disabled="loading || !canSavePersonalSettings">
+                <Save :size="17" />
+                保存个人设置
+              </button>
+            </div>
+          </form>
+        </section>
       </section>
     </section>
   </main>
 </template>
 
 <script setup>
+import * as echarts from 'echarts'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 import {
   Bold,
@@ -1566,6 +1939,7 @@ import {
   RotateCcw,
   Save,
   ScanText,
+  Search,
   Send,
   Settings,
   Sparkles,
@@ -1575,9 +1949,10 @@ import {
   Trash2,
   Underline,
   Undo2,
-  Upload
+  Upload,
+  UserCog
 } from 'lucide-vue-next'
-import { aiSettingsApi, authApi, chatApi, clearSession, fileApi, folderApi, getSession, getToken, mistakeApi, setSession, studyPlanApi } from './api/client'
+import { aiSettingsApi, authApi, chatApi, clearSession, fileApi, folderApi, getSession, getToken, knowledgeProfileApi, mistakeApi, setSession, studyPlanApi, studyProfileApi } from './api/client'
 
 const session = ref(getSession())
 const authMode = ref('login')
@@ -1589,6 +1964,16 @@ const files = ref([])
 const activeFolder = ref(null)
 const activeFile = ref(null)
 const activePage = ref('home')
+const studyProfile = ref(null)
+const onboardingForm = reactive({
+  examDate: '',
+  subjectCount: 4,
+  subjects: ['政治', '英语', '数学', '专业课']
+})
+const personalSettingsForm = reactive({
+  examDate: '',
+  subjects: ['']
+})
 const uploadTag = ref('NOTE')
 const fileInput = ref(null)
 const editorElement = ref(null)
@@ -1606,6 +1991,7 @@ const activeConversationIds = reactive({ QA: null, TEACHER: null })
 const folderChatHistories = ref([])
 const historyPanelOpen = ref(false)
 const activeSource = ref(null)
+const activeChunkDetail = ref(null)
 const movingFile = ref(null)
 const editingFolder = ref(null)
 const editingFileName = ref(false)
@@ -1625,6 +2011,33 @@ const planWeekStart = ref(startOfWeekIso(new Date()))
 const savedExamDate = ref(loadExamDate())
 const examDate = ref(savedExamDate.value)
 const examDateInput = ref(null)
+const profileOverview = ref(null)
+const profileSubjects = ref([])
+const profileWeakChunks = ref([])
+const profileTrends = ref([])
+const profileDistribution = ref(null)
+const profileActivity = ref(null)
+const profileFourteenDayActivity = ref(null)
+const profileRisk = ref(null)
+const profilePressureRisk = ref(null)
+const profileDiagnosis = ref(null)
+const profileTrendDays = ref(30)
+const profilePressureSubjectId = ref('all')
+const profileLoading = ref(false)
+const profileDiagnosisLoading = ref(false)
+let profileDiagnosisRequestId = 0
+const profileSubjectChartRef = ref(null)
+const profileDistributionChartRef = ref(null)
+const profileTrendChartRef = ref(null)
+const profileHeatmapChartRef = ref(null)
+const profilePressureChartRef = ref(null)
+const profileCharts = {
+  subjects: null,
+  distribution: null,
+  trend: null,
+  heatmap: null,
+  pressure: null
+}
 const editingPlanItem = ref(null)
 const planAiMessages = ref(initialPlanAiMessages())
 const planAiInput = ref('')
@@ -1667,13 +2080,21 @@ const mistakeForm = reactive({
   questionText: '',
   solutionText: '',
   statusKey: 'mastered',
-  subjectTagIds: []
+  subjectTagIds: [],
+  linkedChunks: []
 })
+const mistakeChunkQuery = ref('')
+const mistakeChunkCandidates = ref([])
+const mistakeChunkSearchLoading = ref(false)
+const mistakeChunkSubjectFolderId = ref('')
+const mistakeChunkFileId = ref('')
+const mistakeChunkFiles = ref([])
 const practiceForm = reactive({ count: 5, timed: false, minutes: 20, subjectTagIds: [] })
 const practiceQuestions = ref([])
 const practiceIndex = ref(0)
 const practiceStarted = ref(false)
 const practiceFinished = ref(false)
+const practiceResults = ref({})
 const practiceRemainingSeconds = ref(0)
 const practiceTimerId = ref(null)
 const showBrowseSolution = ref(true)
@@ -1698,6 +2119,17 @@ const defaultAiSettings = {
 }
 const aiPresetStorageKey = 'smart_exam_ai_setting_presets'
 const chatForm = reactive({ mode: 'QA', question: '', useKnowledgeBase: true, withCitations: true, deepAnswer: false })
+const teacherState = reactive({
+  requirement: '',
+  subjectFolderId: '',
+  currentQuestion: '',
+  referenceAnswer: '',
+  currentChunkId: null,
+  currentSource: null,
+  feedbackType: null,
+  addedToMistake: false,
+  askedChunkIds: []
+})
 const aiSettings = reactive(loadAiSettings())
 const aiSettingPresets = ref(loadAiSettingPresets())
 const selectedAiPresetId = ref('')
@@ -1709,8 +2141,10 @@ const chatHistoryRetentionMs = 24 * 60 * 60 * 1000
 const navItems = [
   { key: 'home', label: '首页', icon: Timer },
   { key: 'knowledge', label: '我的知识库', icon: Library },
+  { key: 'profile', label: '知识画像', icon: Sparkles },
   { key: 'planner', label: '学习规划', icon: CalendarDays },
   { key: 'mistakes', label: '错题集', icon: BookOpenCheck },
+  { key: 'personal', label: '个人设置', icon: UserCog },
   { key: 'settings', label: 'AI 设置', icon: Settings }
 ]
 
@@ -1722,6 +2156,10 @@ const pageMeta = {
   knowledge: {
     title: '我的知识库',
     description: '集中管理资料、上传编辑和知识问答。'
+  },
+  profile: {
+    title: '知识画像',
+    description: '根据引用、反馈、错题和练习记录查看个人、学科与教材掌握情况。'
   },
   library: {
     title: '我的资料',
@@ -1742,6 +2180,10 @@ const pageMeta = {
   mistakes: {
     title: '错题集',
     description: '上传错题、管理掌握状态，并从未掌握题目中随机刷题。'
+  },
+  personal: {
+    title: '个人设置',
+    description: '维护考研时间和一级学科文件夹。'
   },
   settings: {
     title: 'AI 设置',
@@ -1770,13 +2212,91 @@ const examCountdownDays = computed(() => {
   const today = parseDateInput(todayIso.value)
   return Math.ceil((target.getTime() - today.getTime()) / 86400000)
 })
+const canSubmitOnboarding = computed(() => {
+  return Boolean(onboardingForm.examDate)
+    && onboardingForm.subjects.length > 0
+    && onboardingForm.subjects.every((name) => name.trim())
+})
+const canSavePersonalSettings = computed(() => {
+  return Boolean(personalSettingsForm.examDate)
+    && personalSettingsForm.subjects.length > 0
+    && personalSettingsForm.subjects.every((name) => name.trim())
+})
+const subjectFolders = computed(() => folders.value.filter((folder) => folder.subjectFolder && !folder.parentId))
+const selectedPressureSubject = computed(() =>
+  profileSubjects.value.find((subject) => String(subject.subjectFolderId) === String(profilePressureSubjectId.value)) || null
+)
+const profileMetricCards = computed(() => {
+  const overview = profileOverview.value || {}
+  const toProgress = (value) => Math.max(0, Math.min(100, Math.round(Number(value || 0) * 100)))
+  const overallConfidenceEnough = confidenceRank(overview.averageConfidenceLevel) >= confidenceRank('MEDIUM')
+  const recentAccuracy = recentPracticeAccuracy(overview.recentCorrectCount, overview.recentWrongCount)
+  const recentComparison = recentAccuracyComparison(profileFourteenDayActivity.value?.daily || [])
+  const examProgress = examPrepProgress(overview.examDate)
+  return [
+    {
+      label: '整体掌握度',
+      value: overallConfidenceEnough ? formatPercent(overview.overallMasteryRate) : '未评估',
+      detail: overallConfidenceEnough ? `已练习 ${overview.practicedChunkCount || 0} / ${overview.totalChunkCount || 0}` : '练习数据不足，请先去学习',
+      icon: BookOpenCheck,
+      accent: '#0f766e',
+      progress: overallConfidenceEnough ? toProgress(overview.overallMasteryRate) : 0
+    },
+    {
+      label: '重点突破',
+      value: overview.weakChunkCount || 0,
+      detail: `高风险 ${overview.highRiskChunkCount || 0}`,
+      icon: Sparkles,
+      accent: '#dc2626',
+      progress: Math.min(100, Math.max(0, (overview.weakChunkCount || 0) * 12 + (overview.highRiskChunkCount || 0) * 16))
+    },
+    {
+      label: '近14天正确率',
+      value: recentAccuracy == null ? '未评估' : formatPercent(recentAccuracy),
+      detail: recentComparison,
+      icon: CalendarDays,
+      accent: '#0891b2',
+      progress: recentAccuracy == null ? 0 : toProgress(recentAccuracy)
+    },
+    {
+      label: '考研倒计时',
+      value: overview.daysUntilExam == null ? '--' : `${overview.daysUntilExam} 天`,
+      detail: overview.examDate ? `备考进度 ${formatPercent(examProgress.rate)}` : '未设置考试日期',
+      icon: Clock,
+      accent: '#be123c',
+      progress: toProgress(examProgress.rate)
+    }
+  ]
+})
+const profileDiagnosisSummary = computed(() => {
+  const diagnosis = profileDiagnosis.value
+  return diagnosis?.aiSummary || diagnosis?.summary || '上传资料并产生练习记录后，会生成学习诊断和今日建议。'
+})
+const profileDiagnosisMessage = computed(() => {
+  if (profileDiagnosisLoading.value) {
+    return '正在等待大模型生成学习诊断…'
+  }
+  return profileDiagnosisSummary.value
+})
+const profileDiagnosisInsufficient = computed(() => profileDiagnosis.value?.dataSufficient === false)
+const profileDiagnosisItems = computed(() => profileDiagnosis.value?.items || [])
+const profileSuggestions = computed(() => profileDiagnosis.value?.suggestions || [])
+const mistakeSubjectOptions = computed(() => subjectFolders.value
+  .map((folder) => ({
+    folder,
+    tag: mistakeSubjectTags.value.find((tag) => tag.name === folder.name)
+  }))
+  .filter((item) => item.tag)
+)
 const messages = computed(() => chatMessages[chatForm.mode])
 const currentChatHasMessages = computed(() => messages.value.length > 0)
-const chatInputDisabled = computed(() => chatLoading.value || (chatForm.useKnowledgeBase && !activeFolder.value))
-const canSubmitChat = computed(() => !loading.value && !chatInputDisabled.value && chatForm.question.trim().length > 0)
-const chatPlaceholder = computed(() => chatForm.useKnowledgeBase
-  ? '输入问题，或在教师模式下输入：开始抽问本章重点'
-  : '不引用知识库，直接输入要和大模型聊的问题'
+const chatInputDisabled = computed(() => chatLoading.value || (chatForm.mode !== 'TEACHER' && chatForm.useKnowledgeBase && !activeFolder.value))
+const canSubmitChat = computed(() => !loading.value && !chatInputDisabled.value && (chatForm.mode === 'TEACHER' ? Boolean(activeFolder.value) : chatForm.question.trim().length > 0))
+const chatPlaceholder = computed(() => chatForm.mode === 'TEACHER'
+  ? '输入教师模式提问要求，例如：CPU、进程调度、排序算法'
+  : chatForm.useKnowledgeBase
+    ? '输入问题，或在教师模式下输入：开始抽问本章重点'
+    : '不引用知识库，直接输入要和大模型聊的问题'
 )
 const pendingChatText = computed(() => {
   if (!chatForm.useKnowledgeBase) return '正在请求大模型生成回答…'
@@ -2011,10 +2531,18 @@ function loadExamDate() {
   }
 }
 
-function saveExamDate() {
+async function saveExamDate() {
   if (!examDate.value) return
-  localStorage.setItem(examDateStorageKey(), examDate.value)
-  savedExamDate.value = examDate.value
+  if (studyProfile.value?.onboarded) {
+    await run(async () => {
+      studyProfile.value = await studyProfileApi.update({ examDate: examDate.value })
+      savedExamDate.value = studyProfile.value.examDate || examDate.value
+      await loadKnowledgeProfile()
+    })
+  } else {
+    localStorage.setItem(examDateStorageKey(), examDate.value)
+    savedExamDate.value = examDate.value
+  }
 }
 
 function clearExamDate() {
@@ -2112,7 +2640,16 @@ function loadLegacyHistories(folderId) {
 
 function saveCurrentChatHistory() {
   if (!activeFolder.value) return
-  const savedMessages = messages.value.map(({ role, content, sources }) => ({ role, content, sources }))
+  const savedMessages = messages.value.map(({ role, content, sources, teacherQuestion, referenceAnswer, chunkId, feedbackType, addedToMistake }) => ({
+    role,
+    content,
+    sources,
+    teacherQuestion,
+    referenceAnswer,
+    chunkId,
+    feedbackType,
+    addedToMistake
+  }))
   if (savedMessages.length === 0) return
   const now = Date.now()
   const id = activeConversationIds[chatForm.mode] || crypto.randomUUID()
@@ -2212,6 +2749,10 @@ function setActivePage(page) {
   if (page === 'planner') {
     planModule.value = ''
   }
+  if (page === 'profile') {
+    loadKnowledgeProfile()
+    ensureDailyProfileDiagnosis()
+  }
 }
 
 function openKnowledgeModule(module) {
@@ -2223,11 +2764,9 @@ onMounted(() => {
   homeClockTimerId.value = window.setInterval(() => {
     homeClockNow.value = Date.now()
   }, 60000)
+  window.addEventListener('resize', resizeProfileCharts)
   if (session.value) {
-    loadFolders()
-    loadRemoteAiSettings()
-    loadMistakeData()
-    loadStudyPlan()
+    run(initializeSessionData)
   }
 })
 
@@ -2236,6 +2775,8 @@ onUnmounted(() => {
     window.clearInterval(homeClockTimerId.value)
     homeClockTimerId.value = null
   }
+  window.removeEventListener('resize', resizeProfileCharts)
+  disposeProfileCharts()
 })
 
 async function submitAuth() {
@@ -2244,12 +2785,87 @@ async function submitAuth() {
     const result = await action(authForm)
     setSession(result)
     session.value = result
-    savedExamDate.value = loadExamDate()
+    await initializeSessionData()
+  })
+}
+
+async function initializeSessionData() {
+  await loadStudyProfile()
+  if (!studyProfile.value?.onboarded) return
+  await loadFolders()
+  await loadRemoteAiSettings()
+  await loadMistakeData()
+  await loadStudyPlan()
+  await loadKnowledgeProfile()
+  ensureDailyProfileDiagnosis()
+}
+
+async function loadStudyProfile() {
+  const profile = await studyProfileApi.get()
+  studyProfile.value = profile
+  savedExamDate.value = profile.examDate || loadExamDate()
+  examDate.value = savedExamDate.value
+  syncPersonalSettingsForm(profile)
+  if (!profile.onboarded) {
+    onboardingForm.examDate = profile.examDate || todayIso.value
+    syncOnboardingSubjects()
+  }
+}
+
+function syncPersonalSettingsForm(profile = studyProfile.value) {
+  personalSettingsForm.examDate = profile?.examDate || savedExamDate.value || todayIso.value
+  const subjects = (profile?.subjects || subjectFolders.value).map((subject) => subject.name).filter(Boolean)
+  personalSettingsForm.subjects = subjects.length ? subjects : ['']
+}
+
+function addPersonalSubject() {
+  if (personalSettingsForm.subjects.length < 12) {
+    personalSettingsForm.subjects.push('')
+  }
+}
+
+function removePersonalSubject(index) {
+  if (personalSettingsForm.subjects.length <= 1) return
+  personalSettingsForm.subjects.splice(index, 1)
+}
+
+async function savePersonalSettings() {
+  if (!canSavePersonalSettings.value) return
+  await run(async () => {
+    studyProfile.value = await studyProfileApi.update({
+      examDate: personalSettingsForm.examDate,
+      subjects: personalSettingsForm.subjects.map((name) => name.trim()).filter(Boolean)
+    })
+    savedExamDate.value = studyProfile.value.examDate || ''
     examDate.value = savedExamDate.value
     await loadFolders()
-    await loadRemoteAiSettings()
     await loadMistakeData()
-    await loadStudyPlan()
+    await loadKnowledgeProfile()
+    syncPersonalSettingsForm()
+  })
+}
+
+function syncOnboardingSubjects() {
+  const count = Math.max(1, Math.min(Number(onboardingForm.subjectCount) || 1, 12))
+  onboardingForm.subjectCount = count
+  while (onboardingForm.subjects.length < count) {
+    onboardingForm.subjects.push('')
+  }
+  while (onboardingForm.subjects.length > count) {
+    onboardingForm.subjects.pop()
+  }
+}
+
+async function submitOnboarding() {
+  if (!canSubmitOnboarding.value) return
+  await run(async () => {
+    studyProfile.value = await studyProfileApi.onboard({
+      examDate: onboardingForm.examDate,
+      subjects: onboardingForm.subjects.map((name) => name.trim()).filter(Boolean)
+    })
+    savedExamDate.value = studyProfile.value.examDate || ''
+    examDate.value = savedExamDate.value
+    await initializeSessionData()
   })
 }
 
@@ -2643,6 +3259,12 @@ function resetMistakeForm() {
   mistakeForm.solutionText = ''
   mistakeForm.statusKey = 'mastered'
   mistakeForm.subjectTagIds = []
+  mistakeForm.linkedChunks = []
+  mistakeChunkQuery.value = ''
+  mistakeChunkCandidates.value = []
+  mistakeChunkSubjectFolderId.value = ''
+  mistakeChunkFileId.value = ''
+  mistakeChunkFiles.value = []
   if (mistakeQuestionAttachmentFile.value) mistakeQuestionAttachmentFile.value.value = ''
   if (mistakeSolutionFile.value) mistakeSolutionFile.value.value = ''
   clearImageItems('question')
@@ -2655,6 +3277,14 @@ function editMistake(mistake) {
   mistakeForm.solutionText = mistake.solutionText || ''
   mistakeForm.statusKey = mistake.mastered ? 'mastered' : mistake.statusId ? `status:${mistake.statusId}` : 'mastered'
   mistakeForm.subjectTagIds = (mistake.subjectTags || []).map((tag) => tag.id)
+  mistakeForm.linkedChunks = [...(mistake.linkedChunks || [])]
+  mistakeChunkQuery.value = ''
+  mistakeChunkCandidates.value = []
+  mistakeChunkFileId.value = ''
+  mistakeChunkSubjectFolderId.value = subjectFolderForMistake(mistake)?.id || ''
+  loadMistakeChunkFiles()
+  questionImageItems.value = savedImageItems(mistake.questionAttachments || [], mistake, 'question')
+  solutionImageItems.value = savedImageItems(mistake.solutionAttachments || [], mistake, 'solution')
   activeMistake.value = mistake
   mistakeModule.value = 'upload'
 }
@@ -2674,14 +3304,17 @@ async function saveMistake() {
   const status = selectedMistakeStatus()
   const payload = {
     questionText: mistakeForm.questionText,
-    questionImageFiles: questionImageItems.value.map((item) => item.file),
-    questionImageNames: questionImageItems.value.map((item) => item.displayName),
+    questionImageFiles: newImageItems(questionImageItems.value).map((item) => item.file),
+    questionImageNames: newImageItems(questionImageItems.value).map((item) => item.displayName),
+    retainedQuestionAttachmentIds: retainedAttachmentIds(questionImageItems.value),
     solutionText: mistakeForm.solutionText,
-    solutionImageFiles: solutionImageItems.value.map((item) => item.file),
-    solutionImageNames: solutionImageItems.value.map((item) => item.displayName),
+    solutionImageFiles: newImageItems(solutionImageItems.value).map((item) => item.file),
+    solutionImageNames: newImageItems(solutionImageItems.value).map((item) => item.displayName),
+    retainedSolutionAttachmentIds: retainedAttachmentIds(solutionImageItems.value),
     mastered: status.mastered,
     statusId: status.statusId,
-    subjectTagIds: mistakeForm.subjectTagIds
+    subjectTagIds: mistakeForm.subjectTagIds,
+    chunkIds: mistakeForm.linkedChunks.map((chunk) => chunk.chunkId)
   }
   await run(async () => {
     const saved = editingMistake.value
@@ -2698,6 +3331,65 @@ function setUnmasteredStatus() {
   if (mistakeForm.statusKey === 'mastered') {
     mistakeForm.statusKey = unmasteredStatusOptions.value[0]?.key || 'unmastered'
   }
+}
+
+async function searchMistakeChunks() {
+  mistakeChunkSearchLoading.value = true
+  await run(async () => {
+    mistakeChunkCandidates.value = await knowledgeProfileApi.searchChunks({
+      query: mistakeChunkQuery.value.trim() || mistakeForm.questionText.trim(),
+      folderId: mistakeChunkSubjectFolderId.value || activeFolder.value?.id || null,
+      fileId: mistakeChunkFileId.value || null,
+      limit: 20
+    })
+  })
+  mistakeChunkSearchLoading.value = false
+}
+
+async function handleMistakeChunkSubjectChange() {
+  mistakeChunkFileId.value = ''
+  await loadMistakeChunkFiles()
+  syncMistakeSubjectTagFromFolder()
+  mistakeChunkCandidates.value = []
+}
+
+async function loadMistakeChunkFiles() {
+  if (!mistakeChunkSubjectFolderId.value) {
+    mistakeChunkFiles.value = []
+    return
+  }
+  mistakeChunkFiles.value = await knowledgeProfileApi.files({ folderId: mistakeChunkSubjectFolderId.value })
+}
+
+function syncMistakeSubjectTagFromFolder() {
+  const folder = subjectFolders.value.find((item) => String(item.id) === String(mistakeChunkSubjectFolderId.value))
+  if (!folder) return
+  const tag = mistakeSubjectTags.value.find((item) => item.name === folder.name)
+  if (tag && !mistakeForm.subjectTagIds.includes(tag.id)) {
+    mistakeForm.subjectTagIds = [tag.id, ...mistakeForm.subjectTagIds]
+  }
+}
+
+function subjectFolderForMistake(mistake) {
+  const tagNames = new Set((mistake.subjectTags || []).map((tag) => tag.name))
+  return subjectFolders.value.find((folder) => tagNames.has(folder.name))
+}
+
+function isMistakeChunkLinked(chunkId) {
+  return mistakeForm.linkedChunks.some((chunk) => chunk.chunkId === chunkId)
+}
+
+function addMistakeLinkedChunk(chunk) {
+  if (!chunk?.chunkId || isMistakeChunkLinked(chunk.chunkId)) return
+  mistakeForm.linkedChunks = [...mistakeForm.linkedChunks, chunk]
+}
+
+function removeMistakeLinkedChunk(chunkId) {
+  mistakeForm.linkedChunks = mistakeForm.linkedChunks.filter((chunk) => chunk.chunkId !== chunkId)
+}
+
+function openChunkDetail(chunk) {
+  activeChunkDetail.value = chunk
 }
 
 function onImageSelect(kind) {
@@ -2719,13 +3411,15 @@ function onImageSelect(kind) {
 function removeImageItem(kind, id) {
   const target = kind === 'question' ? questionImageItems : solutionImageItems
   const item = target.value.find((entry) => entry.id === id)
-  if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl)
+  if (item?.previewUrl && !item.saved) URL.revokeObjectURL(item.previewUrl)
   target.value = target.value.filter((entry) => entry.id !== id)
 }
 
 function clearImageItems(kind) {
   const target = kind === 'question' ? questionImageItems : solutionImageItems
-  target.value.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+  target.value.forEach((item) => {
+    if (!item.saved) URL.revokeObjectURL(item.previewUrl)
+  })
   target.value = []
 }
 
@@ -2826,6 +3520,31 @@ async function deleteMistakeStatus(status) {
   })
 }
 
+function savedImageItems(attachments, mistake, kind) {
+  return attachments
+    .filter((attachment) => attachment.image)
+    .map((attachment) => {
+      const fallbackUrl = kind === 'question'
+        ? questionPreviewUrls.value[mistake.id]
+        : solutionPreviewUrls.value[mistake.id]
+      return {
+        id: `saved:${kind}:${attachment.id || mistake.id}`,
+        attachmentId: attachment.id,
+        displayName: displayNameWithoutExtension(attachment.displayName || attachment.originalName || ''),
+        previewUrl: attachment.id ? attachmentPreviewUrls.value[attachment.id] : fallbackUrl,
+        saved: true
+      }
+    })
+}
+
+function newImageItems(items) {
+  return items.filter((item) => item.file)
+}
+
+function retainedAttachmentIds(items) {
+  return items.filter((item) => item.saved && item.attachmentId).map((item) => item.attachmentId)
+}
+
 async function setMistakeStatus(mistake, option) {
   await run(async () => {
     const saved = await mistakeApi.updateMistakeStatus(mistake.id, {
@@ -2895,6 +3614,7 @@ async function startPractice() {
     practiceIndex.value = 0
     practiceStarted.value = practiceQuestions.value.length > 0
     practiceFinished.value = false
+    practiceResults.value = {}
     stopPracticeTimer()
     if (practiceForm.timed && practiceStarted.value) {
       practiceRemainingSeconds.value = Math.max(1, Number(practiceForm.minutes || 1)) * 60
@@ -2926,12 +3646,32 @@ function closePractice() {
   practiceFinished.value = false
   practiceQuestions.value = []
   practiceIndex.value = 0
+  practiceResults.value = {}
   practiceRemainingSeconds.value = 0
 }
 
 function nextPracticeQuestion(delta) {
   if (!practiceQuestions.value.length) return
   practiceIndex.value = Math.min(practiceQuestions.value.length - 1, Math.max(0, practiceIndex.value + delta))
+}
+
+function practiceResultFor(question) {
+  return question?.id ? practiceResults.value[question.id] : null
+}
+
+async function recordPracticeResult(question, correct) {
+  if (!question?.id || practiceResultFor(question)) return
+  await run(async () => {
+    const result = await mistakeApi.recordPracticeResult(question.id, { correct })
+    practiceResults.value = { ...practiceResults.value, [question.id]: result }
+    practiceQuestions.value = practiceQuestions.value.map((item) => item.id === question.id
+      ? { ...item, linkedChunks: result.linkedChunks || item.linkedChunks }
+      : item)
+    mistakes.value = mistakes.value.map((item) => item.id === question.id
+      ? { ...item, linkedChunks: result.linkedChunks || item.linkedChunks }
+      : item)
+    await loadKnowledgeProfile()
+  })
 }
 
 async function refreshAttachmentPreviews(items) {
@@ -3013,6 +3753,7 @@ async function loadFolders() {
         selectRoot()
       }
     }
+    syncPersonalSettingsForm()
   })
 }
 
@@ -3192,6 +3933,10 @@ function openFileInEditor(file) {
 
 function setChatMode(mode) {
   chatForm.mode = mode
+  if (mode === 'TEACHER') {
+    chatForm.useKnowledgeBase = true
+    chatForm.withCitations = true
+  }
   activeSource.value = null
 }
 
@@ -3498,6 +4243,12 @@ async function deleteFile(file) {
 
 async function ask() {
   const question = chatForm.question.trim()
+  if (chatForm.mode === 'TEACHER') {
+    teacherState.requirement = question || teacherState.requirement
+    chatForm.question = ''
+    await requestTeacherQuestion(false)
+    return
+  }
   if (!question || chatInputDisabled.value || loading.value) return
   messages.value.push({ role: 'user', content: question })
   saveCurrentChatHistory()
@@ -3526,6 +4277,103 @@ async function ask() {
     saveCurrentChatHistory()
   })
   chatLoading.value = false
+}
+
+async function requestTeacherQuestion(resetAsked = false) {
+  if (!activeFolder.value || chatLoading.value || loading.value) return
+  if (resetAsked) {
+    teacherState.askedChunkIds = []
+  }
+  activeSource.value = null
+  chatLoading.value = true
+  await run(async () => {
+    const requirement = teacherState.requirement || chatForm.question.trim()
+    const response = await chatApi.teacherQuestion({
+      ...aiSettings,
+      folderId: activeFolder.value.id,
+      subjectFolderId: teacherState.subjectFolderId || null,
+      requirement,
+      excludeChunkIds: teacherState.askedChunkIds
+    })
+    teacherState.currentQuestion = response.question
+    teacherState.referenceAnswer = response.referenceAnswer || ''
+    teacherState.currentChunkId = response.chunkId
+    teacherState.currentSource = response.source
+    teacherState.feedbackType = null
+    teacherState.addedToMistake = false
+    if (response.chunkId && !teacherState.askedChunkIds.includes(response.chunkId)) {
+      teacherState.askedChunkIds.push(response.chunkId)
+    }
+    messages.value.push({
+      role: 'assistant',
+      content: `${response.question} [1]`,
+      sources: response.source ? [response.source] : [],
+      teacherQuestion: true,
+      referenceAnswer: response.referenceAnswer || '',
+      chunkId: response.chunkId,
+      feedbackType: null,
+      addedToMistake: false
+    })
+    saveCurrentChatHistory()
+  })
+  chatLoading.value = false
+}
+
+async function nextTeacherQuestion() {
+  await requestTeacherQuestion(false)
+}
+
+async function feedbackTeacherMessage(message, type) {
+  if (!message?.chunkId || message.feedbackType === type) return
+  await run(async () => {
+    const updated = await chatApi.feedbackChunk(message.chunkId, { type })
+    message.feedbackType = type
+    updateSourceStats(message.chunkId, updated)
+    saveCurrentChatHistory()
+    await loadKnowledgeProfile()
+  })
+}
+
+async function addTeacherMessageToMistake(message) {
+  if (!message?.chunkId || message.addedToMistake) return
+  await run(async () => {
+    const saved = await mistakeApi.createFromTeacherQuestion({
+      chunkId: message.chunkId,
+      questionText: message.content.replace(/\s*\[1\]\s*$/, ''),
+      solutionText: message.referenceAnswer || '',
+      feedbackAlreadyForgot: message.feedbackType === 'FORGOT',
+      subjectTagIds: []
+    })
+    mistakes.value = [saved, ...mistakes.value.filter((item) => item.id !== saved.id)]
+    message.addedToMistake = true
+    saveCurrentChatHistory()
+    await loadKnowledgeProfile()
+  })
+}
+
+async function feedbackActiveSource(type) {
+  if (!activeSource.value?.chunkId) return
+  await run(async () => {
+    const updated = await chatApi.feedbackChunk(activeSource.value.chunkId, { type })
+    updateSourceStats(activeSource.value.chunkId, updated)
+    await loadKnowledgeProfile()
+  })
+}
+
+function updateSourceStats(chunkId, updated) {
+  const apply = (source) => {
+    if (!source || source.chunkId !== chunkId) return
+    source.citeCount = updated.citeCount
+    source.correctHitCount = updated.correctHitCount
+    source.wrongHitCount = updated.wrongHitCount
+    source.masteryRate = updated.masteryRate
+    source.lastAccessedAt = updated.lastAccessedAt
+    source.lastPracticedAt = updated.lastPracticedAt
+  }
+  apply(activeSource.value)
+  ;['QA', 'TEACHER'].forEach((mode) => {
+    chatMessages[mode].forEach((message) => (message.sources || []).forEach(apply))
+  })
 }
 
 async function createNoteFromConversation() {
@@ -3582,6 +4430,302 @@ function sourceLabel(source) {
 function displayFileName(file) {
   const name = file?.originalName || file?.fileName || ''
   return name.replace(/\.[^.\\/\s]+$/u, '')
+}
+
+function formatPercent(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return '0%'
+  return `${Math.round(number * 100)}%`
+}
+
+function subjectProgressDegrees(value) {
+  const number = Number(value)
+  const normalized = Number.isFinite(number) ? Math.max(0, Math.min(1, number)) : 0
+  return `${Math.round(normalized * 360)}deg`
+}
+
+function subjectAccent(index) {
+  return ['#0f766e', '#2563eb', '#b45309', '#7c3aed', '#be123c', '#15803d'][index % 6]
+}
+
+function confidenceRank(value) {
+  return { NONE: 0, LOW: 1, MEDIUM: 2, HIGH: 3 }[value || 'NONE'] || 0
+}
+
+function confidenceLabel(value) {
+  return {
+    NONE: '未评估',
+    LOW: '低',
+    MEDIUM: '中',
+    HIGH: '高'
+  }[value] || '未评估'
+}
+
+function recentPracticeAccuracy(correctCount, wrongCount) {
+  const correct = Number(correctCount || 0)
+  const wrong = Number(wrongCount || 0)
+  const total = correct + wrong
+  return total > 0 ? correct / total : null
+}
+
+function recentAccuracyComparison(rows) {
+  const dailyRows = Array.isArray(rows) ? rows.slice(-14) : []
+  const previousWeek = dailyRows.slice(0, 7).reduce((acc, row) => addPracticeCounts(acc, row), { correct: 0, wrong: 0 })
+  const currentWeek = dailyRows.slice(7).reduce((acc, row) => addPracticeCounts(acc, row), { correct: 0, wrong: 0 })
+  const previousAccuracy = recentPracticeAccuracy(previousWeek.correct, previousWeek.wrong)
+  const currentAccuracy = recentPracticeAccuracy(currentWeek.correct, currentWeek.wrong)
+  if (previousAccuracy == null || currentAccuracy == null) return '相比上周暂无足够数据'
+  const diff = Math.round((currentAccuracy - previousAccuracy) * 100)
+  if (diff >= 0) return `相比上周提高 ${diff}%`
+  return `相比上周下降 ${Math.abs(diff)}%`
+}
+
+function addPracticeCounts(acc, row) {
+  acc.correct += Number(row?.correctCount || 0)
+  acc.wrong += Number(row?.wrongCount || 0)
+  return acc
+}
+
+function examPrepProgress(examDateValue) {
+  if (!examDateValue) return { rate: 0 }
+  const examDate = new Date(`${examDateValue}T00:00:00`)
+  if (Number.isNaN(examDate.getTime())) return { rate: 0 }
+  const startDate = new Date(examDate)
+  startDate.setFullYear(startDate.getFullYear() - 1)
+  const now = new Date()
+  const total = examDate.getTime() - startDate.getTime()
+  const elapsed = now.getTime() - startDate.getTime()
+  if (total <= 0) return { rate: 0 }
+  return { rate: Math.max(0, Math.min(1, elapsed / total)) }
+}
+
+function formatDateTime(value) {
+  if (!value) return '--'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '--'
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function emptyChartGraphic(text = '暂无数据') {
+  return {
+    type: 'text',
+    left: 'center',
+    top: 'middle',
+    style: {
+      text,
+      fill: '#94a3b8',
+      fontSize: 13
+    }
+  }
+}
+
+function ensureProfileChart(key, element) {
+  if (!element) return null
+  const current = profileCharts[key]
+  if (current && current.getDom() === element) return current
+  if (current) current.dispose()
+  profileCharts[key] = echarts.init(element)
+  return profileCharts[key]
+}
+
+function renderProfileCharts() {
+  if (activePage.value !== 'profile') return
+  renderSubjectProfileChart()
+  renderDistributionProfileChart()
+  renderTrendProfileChart()
+  renderHeatmapProfileChart()
+  renderPressureProfileChart()
+}
+
+function renderSubjectProfileChart() {
+  const chart = ensureProfileChart('subjects', profileSubjectChartRef.value)
+  if (!chart) return
+  const names = profileSubjects.value.map((subject) => subject.subjectName)
+  const mastery = profileSubjects.value.map((subject) => Math.round(Number(subject.masteryRate || 0) * 100))
+  const coverage = profileSubjects.value.map((subject) => Math.round(Number(subject.coverageRate || 0) * 100))
+  chart.setOption({
+    color: ['#0f766e', '#d97706'],
+    tooltip: { trigger: 'axis', valueFormatter: (value) => `${value}%` },
+    legend: { top: 0, right: 0 },
+    grid: { top: 42, left: 34, right: 16, bottom: 28 },
+    xAxis: {
+      type: 'category',
+      data: names,
+      axisLabel: { color: '#64748b', interval: 0 }
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      max: 100,
+      axisLabel: { formatter: '{value}%', color: '#64748b' },
+      splitLine: { lineStyle: { color: '#e2e8f0' } }
+    },
+    series: [
+      { name: '掌握率', type: 'bar', barMaxWidth: 26, data: mastery, itemStyle: { borderRadius: [4, 4, 0, 0] } },
+      { name: '覆盖率', type: 'bar', barMaxWidth: 26, data: coverage, itemStyle: { borderRadius: [4, 4, 0, 0] } }
+    ],
+    graphic: names.length ? [] : [emptyChartGraphic()]
+  }, true)
+}
+
+function renderDistributionProfileChart() {
+  const chart = ensureProfileChart('distribution', profileDistributionChartRef.value)
+  if (!chart) return
+  const distribution = profileDistribution.value || {}
+  const data = [
+    { name: '未评估', value: distribution.unassessed || 0 },
+    { name: '薄弱', value: distribution.weak || 0 },
+    { name: '一般', value: distribution.medium || 0 },
+    { name: '良好', value: distribution.good || 0 },
+    { name: '熟练', value: distribution.mastered || 0 }
+  ]
+  const total = data.reduce((sum, item) => sum + item.value, 0)
+  chart.setOption({
+    color: ['#94a3b8', '#dc2626', '#d97706', '#2563eb', '#059669'],
+    tooltip: { trigger: 'item' },
+    legend: { bottom: 0, left: 'center' },
+    series: [
+      {
+        name: '知识点',
+        type: 'pie',
+        radius: ['48%', '70%'],
+        center: ['50%', '45%'],
+        avoidLabelOverlap: true,
+        label: { formatter: '{b}\n{d}%' },
+        data
+      }
+    ],
+    graphic: total ? [] : [emptyChartGraphic()]
+  }, true)
+}
+
+function renderTrendProfileChart() {
+  const chart = ensureProfileChart('trend', profileTrendChartRef.value)
+  if (!chart) return
+  const rows = profileActivity.value?.daily || profileTrends.value
+  const dates = rows.map((item) => String(item.date || '').slice(5))
+  chart.setOption({
+    color: ['#0f766e', '#2563eb', '#dc2626', '#7c3aed'],
+    tooltip: { trigger: 'axis' },
+    legend: { top: 0, right: 0 },
+    grid: { top: 42, left: 34, right: 18, bottom: 28 },
+    xAxis: {
+      type: 'category',
+      boundaryGap: false,
+      data: dates,
+      axisLabel: { color: '#64748b' }
+    },
+    yAxis: {
+      type: 'value',
+      minInterval: 1,
+      axisLabel: { color: '#64748b' },
+      splitLine: { lineStyle: { color: '#e2e8f0' } }
+    },
+    series: [
+      { name: '练习', type: 'line', smooth: true, data: rows.map((item) => item.practiceCount || 0) },
+      { name: '答对', type: 'line', smooth: true, data: rows.map((item) => item.correctCount || 0) },
+      { name: '答错', type: 'line', smooth: true, data: rows.map((item) => item.wrongCount || 0) },
+      { name: '引用', type: 'line', smooth: true, data: rows.map((item) => item.citationCount || 0) },
+      { name: '错题复盘', type: 'line', smooth: true, data: rows.map((item) => item.mistakePracticeCount || 0) }
+    ],
+    graphic: dates.length ? [] : [emptyChartGraphic()]
+  }, true)
+}
+
+function renderHeatmapProfileChart() {
+  const chart = ensureProfileChart('heatmap', profileHeatmapChartRef.value)
+  if (!chart) return
+  const rows = profileActivity.value?.daily || []
+  const today = toDateInputValue(new Date())
+  const data = rows.map((item) => [
+    item.date,
+    (item.practiceCount || 0) * 2 + (item.mistakePracticeCount || 0) * 2 + (item.citationCount || 0)
+  ])
+  const values = data.map((item) => item[1])
+  chart.setOption({
+    tooltip: { formatter: (params) => `${params.value[0]}<br/>活跃度 ${params.value[1]}` },
+    visualMap: {
+      min: 0,
+      max: Math.max(1, ...values),
+      orient: 'horizontal',
+      left: 'center',
+      bottom: 0,
+      inRange: { color: ['#e2e8f0', '#99f6e4', '#0f766e'] }
+    },
+    calendar: {
+      top: 20,
+      left: 24,
+      right: 24,
+      bottom: 56,
+      cellSize: ['auto', 22],
+      range: rows.length ? [rows[0].date, rows[rows.length - 1].date] : [today, today],
+      itemStyle: { borderWidth: 2, borderColor: '#fff' },
+      splitLine: { lineStyle: { color: '#e2e8f0' } },
+      dayLabel: { color: '#64748b' },
+      monthLabel: { color: '#64748b' },
+      yearLabel: { show: false }
+    },
+    series: [{ type: 'heatmap', coordinateSystem: 'calendar', data }],
+    graphic: data.length ? [] : [emptyChartGraphic()]
+  }, true)
+}
+
+function renderPressureProfileChart() {
+  const chart = ensureProfileChart('pressure', profilePressureChartRef.value)
+  if (!chart) return
+  const rows = profilePressureRisk.value?.pressureTrend || []
+  const scopeName = selectedPressureSubject.value?.subjectName || '全科'
+  chart.setOption({
+    color: ['#d97706', '#2563eb', '#dc2626'],
+    tooltip: { trigger: 'axis' },
+    legend: { top: 0, right: 0 },
+    grid: { top: 42, left: 42, right: 18, bottom: 28 },
+    xAxis: { type: 'category', boundaryGap: false, data: rows.map((item) => String(item.date || '').slice(5)), axisLabel: { color: '#64748b' } },
+    yAxis: { type: 'value', minInterval: 1, axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#e2e8f0' } } },
+    series: [
+      { name: `${scopeName}平均风险`, type: 'line', smooth: true, data: rows.map((item) => Math.round(item.averageRiskScore || 0)) },
+      { name: `${scopeName}待复习`, type: 'line', smooth: true, data: rows.map((item) => item.dueChunkCount || 0) },
+      { name: `${scopeName}高风险`, type: 'line', smooth: true, data: rows.map((item) => item.highRiskChunkCount || 0) }
+    ],
+    graphic: rows.length ? [] : [emptyChartGraphic()]
+  }, true)
+}
+
+function resizeProfileCharts() {
+  Object.values(profileCharts).forEach((chart) => chart?.resize())
+}
+
+function disposeProfileCharts() {
+  Object.keys(profileCharts).forEach((key) => {
+    profileCharts[key]?.dispose()
+    profileCharts[key] = null
+  })
+}
+
+function openTeacherForWeakChunk(chunk) {
+  activePage.value = 'knowledge'
+  knowledgeModule.value = 'chat'
+  setChatMode('TEACHER')
+  teacherState.requirement = displayFileName({ originalName: chunk.fileName })
+  chatForm.question = teacherState.requirement
+}
+
+async function openWeakChunkInEditor(chunk) {
+  if (!chunk?.fileId) return
+  await run(async () => {
+    const file = await fileApi.get(chunk.fileId)
+    const folder = folders.value.find((item) => item.id === file.folderId)
+    if (folder) {
+      activeFolder.value = folder
+      files.value = await fileApi.list(folder.id)
+    }
+    cancelFileNameEdit()
+    activeFile.value = { ...file }
+    activeSource.value = null
+    openKnowledgeModule('editor')
+    await nextTick()
+    setEditorContent(activeFile.value.extractedText, Math.max(0, (chunk.pageNumber || 1) - 1))
+  })
 }
 
 function originalFileExtension(file) {
@@ -3926,6 +5070,152 @@ async function loadRemoteAiSettings() {
   })
 }
 
+async function loadKnowledgeProfile() {
+  if (!session.value || !studyProfile.value?.onboarded) return
+  profileLoading.value = true
+  await run(async () => {
+    const [overview, subjects, weakChunks, trends, distribution, activity, fourteenDayActivity, risk] = await Promise.all([
+      knowledgeProfileApi.overview(),
+      knowledgeProfileApi.subjects(),
+      knowledgeProfileApi.weakChunks(),
+      knowledgeProfileApi.trends({ days: profileTrendDays.value }),
+      knowledgeProfileApi.distribution(),
+      knowledgeProfileApi.activity({ days: profileTrendDays.value }),
+      knowledgeProfileApi.activity({ days: 14 }),
+      knowledgeProfileApi.risk({ days: profileTrendDays.value })
+    ])
+    profileOverview.value = overview
+    profileSubjects.value = subjects
+    profileWeakChunks.value = weakChunks
+    profileTrends.value = trends
+    profileDistribution.value = distribution
+    profileActivity.value = activity
+    profileFourteenDayActivity.value = fourteenDayActivity
+    profileRisk.value = risk
+    const pressureSubjectStillExists = profilePressureSubjectId.value === 'all'
+      || subjects.some((subject) => String(subject.subjectFolderId) === String(profilePressureSubjectId.value))
+    if (!pressureSubjectStillExists) {
+      profilePressureSubjectId.value = 'all'
+    }
+    profilePressureRisk.value = profilePressureSubjectId.value === 'all'
+      ? risk
+      : await knowledgeProfileApi.risk({ days: profileTrendDays.value, folderId: profilePressureSubjectId.value })
+    await nextTick()
+    renderProfileCharts()
+  })
+  profileLoading.value = false
+}
+
+function profileDiagnosisCacheKey(days = profileTrendDays.value) {
+  const userKey = session.value?.userId || session.value?.username || 'anonymous'
+  return `smart_exam_profile_diagnosis_v2_${userKey}_${toDateInputValue(new Date())}_${days}`
+}
+
+function readCachedProfileDiagnosis(days = profileTrendDays.value) {
+  const raw = localStorage.getItem(profileDiagnosisCacheKey(days))
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    localStorage.removeItem(profileDiagnosisCacheKey(days))
+    return null
+  }
+}
+
+function cacheProfileDiagnosis(diagnosis, days = profileTrendDays.value) {
+  localStorage.setItem(profileDiagnosisCacheKey(days), JSON.stringify(diagnosis))
+}
+
+function ensureDailyProfileDiagnosis() {
+  if (!session.value || !studyProfile.value?.onboarded) return
+  const cached = readCachedProfileDiagnosis()
+  if (cached) {
+    profileDiagnosis.value = cached
+    return
+  }
+  loadProfileDiagnosis({ force: true })
+}
+
+async function loadProfileDiagnosis({ force = false } = {}) {
+  if (!session.value || !studyProfile.value?.onboarded || profileDiagnosisLoading.value) return
+  const days = profileTrendDays.value
+  const cached = force ? null : readCachedProfileDiagnosis(days)
+  if (cached) {
+    profileDiagnosis.value = cached
+    return
+  }
+  const requestId = ++profileDiagnosisRequestId
+  profileDiagnosisLoading.value = true
+  try {
+    const diagnosis = await knowledgeProfileApi.diagnosis({ days, ai: true })
+    if (requestId !== profileDiagnosisRequestId) return
+    profileDiagnosis.value = diagnosis
+    cacheProfileDiagnosis(diagnosis, days)
+  } catch (err) {
+    if (requestId === profileDiagnosisRequestId) {
+      error.value = err.message
+    }
+  } finally {
+    if (requestId === profileDiagnosisRequestId) {
+      profileDiagnosisLoading.value = false
+    }
+  }
+}
+
+async function refreshProfileDiagnosis() {
+  await loadProfileDiagnosis({ force: true })
+}
+
+async function refreshProfileRecommendations() {
+  await loadKnowledgeProfile()
+  await loadProfileDiagnosis({ force: true })
+}
+
+async function changeProfilePressureSubject() {
+  const folderId = profilePressureSubjectId.value === 'all' ? null : profilePressureSubjectId.value
+  profilePressureRisk.value = await knowledgeProfileApi.risk({ days: profileTrendDays.value, folderId })
+  await nextTick()
+  renderPressureProfileChart()
+}
+
+async function changeProfileTrendDays(days) {
+  if (profileTrendDays.value === days) return
+  profileTrendDays.value = days
+  profileDiagnosisRequestId += 1
+  profileDiagnosisLoading.value = false
+  profileDiagnosis.value = readCachedProfileDiagnosis(days)
+  await loadKnowledgeProfile()
+  ensureDailyProfileDiagnosis()
+}
+
+function openTeacherForSuggestion(suggestion) {
+  activePage.value = 'knowledge'
+  knowledgeModule.value = 'chat'
+  setChatMode('TEACHER')
+  teacherState.requirement = suggestion.title || suggestion.fileName || ''
+  chatForm.question = teacherState.requirement
+}
+
+async function addSuggestionToPlan(suggestion) {
+  const payload = suggestion?.planPayload
+  if (!payload) return
+  await run(async () => {
+    await studyPlanApi.createFromProfileSuggestion({
+      title: payload.title,
+      subject: payload.subject,
+      description: payload.description,
+      itemType: payload.itemType || 'REVIEW',
+      startDate: payload.startDate,
+      startTime: payload.startTime,
+      endTime: payload.endTime,
+      location: '',
+      priority: payload.priority || 'MEDIUM',
+      status: payload.status || 'TODO'
+    })
+    await loadStudyPlan()
+  })
+}
+
 async function saveAiSettings() {
   await run(async () => {
     const saved = await aiSettingsApi.save(normalizeAiSettings(aiSettings))
@@ -3961,6 +5251,21 @@ function logout() {
   clearSession()
   session.value = null
   activePage.value = 'home'
+  studyProfile.value = null
+  profileOverview.value = null
+  profileSubjects.value = []
+  profileWeakChunks.value = []
+  profileTrends.value = []
+  profileDistribution.value = null
+  profileActivity.value = null
+  profileFourteenDayActivity.value = null
+  profileRisk.value = null
+  profilePressureRisk.value = null
+  profileDiagnosis.value = null
+  profileDiagnosisLoading.value = false
+  profileDiagnosisRequestId += 1
+  profilePressureSubjectId.value = 'all'
+  disposeProfileCharts()
   folders.value = []
   files.value = []
   activeFolder.value = null

@@ -15,6 +15,8 @@ public interface MistakeSubjectTagRepository extends JpaRepository<MistakeSubjec
 
     Optional<MistakeSubjectTag> findByIdAndOwnerId(Long id, Long ownerId);
 
+    Optional<MistakeSubjectTag> findByOwnerIdAndNameIgnoreCase(Long ownerId, String name);
+
     boolean existsByOwnerIdAndNameIgnoreCase(Long ownerId, String name);
 
     @Query(value = "select count(*) > 0 from mistake_question_subject_tag where subject_tag_id = :tagId", nativeQuery = true)

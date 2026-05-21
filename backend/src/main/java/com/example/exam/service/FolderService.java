@@ -59,6 +59,9 @@ public class FolderService {
             }
             folder.setParent(parent);
             folder.setDepth(parent.getDepth() + 1);
+        } else {
+            folder.setSubjectFolder(true);
+            folder.setSubjectOrder((int) folderRepository.countRootFolders(user.getId()));
         }
 
         folderRepository.save(folder);
@@ -120,6 +123,6 @@ public class FolderService {
     private FolderResponse toResponse(StudyFolder folder) {
         Long parentId = folder.getParent() == null ? null : folder.getParent().getId();
         return new FolderResponse(folder.getId(), folder.getName(), folder.getDescription(), parentId,
-                folder.getDepth(), folder.getCreatedAt());
+                folder.getDepth(), folder.isSubjectFolder(), folder.getSubjectOrder(), folder.getCreatedAt());
     }
 }

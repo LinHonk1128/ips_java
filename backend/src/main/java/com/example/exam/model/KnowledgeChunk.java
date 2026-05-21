@@ -1,6 +1,7 @@
 package com.example.exam.model;
 
 import jakarta.persistence.*;
+import java.time.Instant;
 
 @Entity
 public class KnowledgeChunk {
@@ -28,6 +29,15 @@ public class KnowledgeChunk {
 
     @Column(nullable = false, columnDefinition = "integer default 0")
     private int wrongHitCount = 0;
+
+    @Column(nullable = false, columnDefinition = "integer default 0")
+    private int citeCount = 0;
+
+    @Column
+    private Instant lastAccessedAt;
+
+    @Column
+    private Instant lastPracticedAt;
 
     @Lob
     @Column(nullable = false, columnDefinition = "TEXT")
@@ -91,6 +101,38 @@ public class KnowledgeChunk {
 
     public void setWrongHitCount(int wrongHitCount) {
         this.wrongHitCount = wrongHitCount;
+    }
+
+    public int getCiteCount() {
+        return citeCount;
+    }
+
+    public void setCiteCount(int citeCount) {
+        this.citeCount = citeCount;
+    }
+
+    public Instant getLastAccessedAt() {
+        return lastAccessedAt;
+    }
+
+    public void setLastAccessedAt(Instant lastAccessedAt) {
+        this.lastAccessedAt = lastAccessedAt;
+    }
+
+    public Instant getLastPracticedAt() {
+        return lastPracticedAt;
+    }
+
+    public void setLastPracticedAt(Instant lastPracticedAt) {
+        this.lastPracticedAt = lastPracticedAt;
+    }
+
+    public int getFeedbackCount() {
+        return correctHitCount + wrongHitCount;
+    }
+
+    public double getMasteryRate() {
+        return (correctHitCount + 2.5) / (correctHitCount + 1.2 * wrongHitCount + 5.0);
     }
 
     public String getContent() {

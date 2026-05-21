@@ -2,6 +2,8 @@ package com.example.exam.service;
 
 import com.example.exam.dto.ChatDtos.ChatRequest;
 import com.example.exam.dto.ChatDtos.ChatResponse;
+import com.example.exam.dto.ChatDtos.TeacherQuestionRequest;
+import com.example.exam.dto.ChatDtos.TeacherQuestionResponse;
 import com.example.exam.dto.ChatDtos.ConversationMessage;
 import com.example.exam.dto.ChatDtos.NoteRequest;
 import com.example.exam.dto.ChatDtos.Source;
@@ -18,6 +20,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -53,20 +56,23 @@ public class ChatService {
     private final StudyFolderRepository folderRepository;
     private final AiSettingsService aiSettingsService;
     private final ElasticsearchService elasticsearchService;
+    private final KnowledgeChunkInteractionService chunkInteractionService;
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newHttpClient();
 
     public ChatService(KnowledgeChunkRepository chunkRepository,
                        StudyFolderRepository folderRepository,
                        AiSettingsService aiSettingsService,
-                       ElasticsearchService elasticsearchService) {
+                       ElasticsearchService elasticsearchService,
+                       KnowledgeChunkInteractionService chunkInteractionService) {
         this.chunkRepository = chunkRepository;
         this.folderRepository = folderRepository;
         this.aiSettingsService = aiSettingsService;
         this.elasticsearchService = elasticsearchService;
+        this.chunkInteractionService = chunkInteractionService;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ChatResponse ask(Long userId, ChatRequest request) {
         long started = System.nanoTime();
         boolean useKnowledgeBase = useKnowledgeBase(request);
@@ -103,7 +109,9 @@ public class ChatService {
                     ? localAnswer(request.mode(), chunks, hasChatApiKey(settings), withCitations)
                     : localDirectAnswer(hasChatApiKey(settings));
         }
-        List<Source> sources = useKnowledgeBase && withCitations ? buildSources(chunks, request.question(), answer) : List.of();
+        List<Source> sources = useKnowledgeBase && withCitations
+                ? chunkInteractionService.recordCitations(userId, buildSources(chunks, request.question(), answer))
+                : List.of();
         long finishedAt = System.nanoTime();
         log.info("chat.ask timings userId={} folderId={} knowledgeBase={} deep={} citations={} chunks={} folder={}ms settings={}ms retrieve={}ms prompt={}ms model={}ms sources={}ms total={}ms",
                 userId,
@@ -167,7 +175,9 @@ public class ChatService {
                             : localDirectAnswer(hasChatApiKey(settings));
                     sendEvent(emitter, "delta", answer);
                 }
-                List<Source> sources = useKnowledgeBase && withCitations ? buildSources(chunks, request.question(), answer) : List.of();
+                List<Source> sources = useKnowledgeBase && withCitations
+                        ? chunkInteractionService.recordCitations(userId, buildSources(chunks, request.question(), answer))
+                        : List.of();
                 long finishedAt = System.nanoTime();
                 sendEvent(emitter, "done", new ChatResponse(answer, sources));
                 emitter.complete();
@@ -229,6 +239,170 @@ public class ChatService {
             note = localConversationNote(request.messages(), hasChatApiKey(settings));
         }
         return note.trim();
+    }
+
+    @Transactional
+    public TeacherQuestionResponse teacherQuestion(Long userId, TeacherQuestionRequest request) {
+        StudyFolder scopeFolder = requireFolder(request.subjectFolderId() == null ? request.folderId() : request.subjectFolderId(), userId);
+        var settings = aiSettingsService.merge(
+                userId,
+                request.aiRole(),
+                request.systemPrompt(),
+                request.chatModel() == null ? request.model() : request.chatModel(),
+                request.chatEndpoint() == null ? request.endpoint() : request.chatEndpoint(),
+                request.chatApiKey() == null ? request.apiKey() : request.chatApiKey(),
+                request.embeddingModel(),
+                request.embeddingEndpoint(),
+                request.embeddingApiKey(),
+                request.embeddingDimensions()
+        );
+        KnowledgeChunk selected = selectTeacherChunk(scopeFolder, userId, request.requirement(), request.excludeChunkIds());
+        if (selected == null) {
+            throw new IllegalArgumentException("当前知识库还没有可用于教师模式出题的知识片段");
+        }
+        chunkInteractionService.recordCitation(selected);
+        String prompt = buildTeacherQuestionPrompt(request.requirement(), selected);
+        String generated = callModel(settings, prompt, 900, 0.15);
+        TeacherQuestionPayload payload = parseTeacherQuestion(generated, selected);
+        Source source = chunkInteractionService.toSource(1, selected, contextualExcerpt(selected.getContent(), searchTerms(request.requirement())));
+        return new TeacherQuestionResponse(payload.question(), payload.referenceAnswer(), source, selected.getId());
+    }
+
+    private KnowledgeChunk selectTeacherChunk(StudyFolder scopeFolder, Long userId, String requirement, List<Long> excludeChunkIds) {
+        List<Long> folderIds = folderScope(scopeFolder, userId);
+        List<KnowledgeChunk> candidates = chunkRepository.findExistingByFolderIdInAndOwnerId(folderIds, userId).stream()
+                .filter(chunk -> isUsableKnowledgeContent(chunk.getContent()))
+                .toList();
+        if (candidates.isEmpty()) {
+            return null;
+        }
+        Set<Long> excluded = excludeChunkIds == null ? Set.of() : new HashSet<>(excludeChunkIds);
+        List<KnowledgeChunk> available = candidates.stream()
+                .filter(chunk -> !excluded.contains(chunk.getId()))
+                .toList();
+        if (available.isEmpty()) {
+            available = candidates;
+        }
+
+        List<String> terms = searchTerms(requirement);
+        Map<Long, Integer> relevanceById = new HashMap<>();
+        int maxRelevance = 0;
+        for (KnowledgeChunk chunk : available) {
+            int relevance = terms.isEmpty() ? 1 : score(chunk.getContent(), terms);
+            relevanceById.put(chunk.getId(), relevance);
+            maxRelevance = Math.max(maxRelevance, relevance);
+        }
+        int maxCite = available.stream().mapToInt(KnowledgeChunk::getCiteCount).max().orElse(0);
+        int relevanceBase = maxRelevance <= 0 ? 1 : maxRelevance;
+        int citeBase = Math.max(1, maxCite);
+
+        return available.stream()
+                .max(Comparator.comparingDouble(chunk -> teacherChunkScore(chunk, relevanceById.getOrDefault(chunk.getId(), 0),
+                        relevanceBase, citeBase)))
+                .orElse(available.get(0));
+    }
+
+    private double teacherChunkScore(KnowledgeChunk chunk, int relevance, int relevanceBase, int citeBase) {
+        double relevanceScore = relevance <= 0 ? 0.05 : Math.min(1.0, relevance / (double) relevanceBase);
+        double attentionScore = Math.log1p(chunk.getCiteCount()) / Math.log1p(citeBase);
+        double daysSincePractice = chunk.getLastPracticedAt() == null
+                ? 14.0
+                : Math.max(0.0, Duration.between(chunk.getLastPracticedAt(), Instant.now()).toDays());
+        double forgetRisk = Math.min(1.0, daysSincePractice / 14.0);
+        double reviewPriority = (1.0 - chunk.getMasteryRate()) * 0.6 + forgetRisk * 0.25 + attentionScore * 0.15;
+        return relevanceScore * 0.50 + reviewPriority * 0.45 + Math.random() * 0.05;
+    }
+
+    private String buildTeacherQuestionPrompt(String requirement, KnowledgeChunk chunk) {
+        String requestText = requirement == null || requirement.isBlank() ? "围绕该知识片段的核心考点" : requirement.trim();
+        return """
+                你是考研复习老师。请只依据给定知识片段中“明确写出”的信息，围绕用户的提问要求出 1 道问题。
+
+                要求：
+                1. 只输出 1 道题；
+                2. 问题的答案必须能直接从知识片段中找到，不允许依赖常识、教材外知识或推理补全；
+                3. 如果知识片段只是简单提到两个概念，但没有说明二者区别、联系、原因、优缺点或适用场景，不要提问“区别是什么”“为什么”“比较两者”等扩展题；
+                4. 如果资料信息较少，就出识记型或定位型问题，例如“片段中提到了哪些……”“片段如何定义……”“片段给出了哪些分类……”；
+                5. referenceAnswer 只能复述或概括知识片段中的原有信息；资料没有写出的内容必须回答“当前片段未说明”；
+                6. 只输出 JSON：{"question":"...","referenceAnswer":"..."}。
+
+                提问要求：
+                %s
+
+                知识片段：
+                %s
+                """.formatted(requestText, promptExcerpt(chunk.getContent()));
+    }
+
+    private TeacherQuestionPayload parseTeacherQuestion(String generated, KnowledgeChunk chunk) {
+        if (generated != null && !generated.isBlank()) {
+            try {
+                String json = generated.trim();
+                int start = json.indexOf('{');
+                int end = json.lastIndexOf('}');
+                if (start >= 0 && end > start) {
+                    json = json.substring(start, end + 1);
+                }
+                JsonNode root = mapper.readTree(json);
+                String question = root.path("question").asText("");
+                String referenceAnswer = root.path("referenceAnswer").asText("");
+                if (!question.isBlank()) {
+                    if (needsExplicitEvidence(question) && !hasExplicitEvidence(question, chunk.getContent())) {
+                        return safeTeacherQuestion(chunk);
+                    }
+                    return new TeacherQuestionPayload(question.trim(), referenceAnswer.isBlank() ? excerpt(chunk.getContent()) : referenceAnswer.trim());
+                }
+            } catch (Exception ignored) {
+                if (!generated.isBlank()) {
+                    if (needsExplicitEvidence(generated) && !hasExplicitEvidence(generated, chunk.getContent())) {
+                        return safeTeacherQuestion(chunk);
+                    }
+                    return new TeacherQuestionPayload(generated.trim(), excerpt(chunk.getContent()));
+                }
+            }
+        }
+        return safeTeacherQuestion(chunk);
+    }
+
+    private TeacherQuestionPayload safeTeacherQuestion(KnowledgeChunk chunk) {
+        return new TeacherQuestionPayload("根据当前知识片段，请概括其中明确提到的核心概念或分类。", excerpt(chunk.getContent()));
+    }
+
+    private boolean needsExplicitEvidence(String question) {
+        String text = question == null ? "" : question;
+        return text.contains("区别")
+                || text.contains("不同")
+                || text.contains("比较")
+                || text.contains("联系")
+                || text.contains("关系")
+                || text.contains("为什么")
+                || text.contains("原因")
+                || text.contains("优缺点")
+                || text.contains("适用场景");
+    }
+
+    private boolean hasExplicitEvidence(String question, String content) {
+        String text = content == null ? "" : content;
+        if ((question.contains("区别") || question.contains("不同") || question.contains("比较"))
+                && !(text.contains("区别") || text.contains("不同") || text.contains("比较") || text.contains("分别") || text.contains("而"))) {
+            return false;
+        }
+        if ((question.contains("为什么") || question.contains("原因"))
+                && !(text.contains("因为") || text.contains("由于") || text.contains("所以") || text.contains("因此") || text.contains("原因"))) {
+            return false;
+        }
+        if ((question.contains("联系") || question.contains("关系"))
+                && !(text.contains("联系") || text.contains("关系") || text.contains("相关") || text.contains("依赖"))) {
+            return false;
+        }
+        if ((question.contains("优缺点") || question.contains("适用场景"))
+                && !(text.contains("优点") || text.contains("缺点") || text.contains("适用") || text.contains("场景"))) {
+            return false;
+        }
+        return true;
+    }
+
+    private record TeacherQuestionPayload(String question, String referenceAnswer) {
     }
 
     private StudyFolder requireFolder(Long folderId, Long userId) {
@@ -305,11 +479,18 @@ public class ChatService {
                     KnowledgeChunk chunk = chunks.get(index);
                     return new Source(
                         index + 1,
+                        chunk.getId(),
                         chunk.getFile().getId(),
                         chunk.getFolder().getId(),
                         chunk.getFile().getOriginalName(),
                         chunk.getPageNumber(),
-                        contextualExcerpt(chunk.getContent(), terms));
+                        contextualExcerpt(chunk.getContent(), terms),
+                        chunk.getCiteCount(),
+                        chunk.getCorrectHitCount(),
+                        chunk.getWrongHitCount(),
+                        chunk.getMasteryRate(),
+                        chunk.getLastAccessedAt(),
+                        chunk.getLastPracticedAt());
                 })
                 .toList();
     }
