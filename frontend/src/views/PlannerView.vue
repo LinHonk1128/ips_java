@@ -199,7 +199,7 @@
               <div class="section-head split">
                 <div>
                   <h3>AI 时间规划</h3>
-                  <p>{{ aiSettings.chatModel }} · {{ aiSettings.chatApiKey ? '已连接模型' : '未配置 Key' }}</p>
+                  <p>{{ aiSettings.aiRole }}</p>
                 </div>
                 <div class="planner-ai-actions">
                   <button class="secondary-btn slim" type="button" @click="activePage = 'settings'">

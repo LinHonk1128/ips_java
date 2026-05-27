@@ -3,7 +3,7 @@
       <aside class="sidebar">
         <div class="side-top">
           <div class="brand-line">
-            <div class="brand-mark small">研</div>
+            <img class="brand-mark small" :src="brandLogo" alt="智能考研系统标识" />
             <div>
               <strong>智能考研</strong>
               <span>{{ session.displayName || session.username }}</span>
@@ -89,6 +89,7 @@
     </section>
 </template>
 <script setup>
+import brandLogo from '../../assets/brand-logo.svg'
 import WorkspacePageRouter from './WorkspacePageRouter.vue'
 import { useAppContext } from '../../composables/appContext'
 

@@ -132,7 +132,9 @@ public class MistakeService {
     @Transactional
     public List<MistakeSubjectTagResponse> listSubjectTags(Long userId) {
         syncSubjectFolderTags(userId);
+        java.util.Set<String> subjectNames = subjectFolderNames(userId);
         return subjectTagRepository.findByOwnerIdOrderByCreatedAtAsc(userId).stream()
+                .filter(tag -> subjectNames.contains(tag.getName()))
                 .map(this::toSubjectTagResponse)
                 .toList();
     }
@@ -154,7 +156,7 @@ public class MistakeService {
             }
         }
         for (MistakeSubjectTag tag : subjectTagRepository.findByOwnerIdOrderByCreatedAtAsc(userId)) {
-            if (!subjectNames.contains(tag.getName()) && !subjectTagRepository.isUsed(tag.getId())) {
+            if (!subjectNames.contains(tag.getName()) && subjectTagRepository.countUsage(tag.getId()) == 0) {
                 subjectTagRepository.delete(tag);
             }
         }
@@ -162,26 +164,12 @@ public class MistakeService {
 
     @Transactional
     public MistakeSubjectTagResponse createSubjectTag(Long userId, String name) {
-        String normalized = normalizeName(name);
-        if (subjectTagRepository.existsByOwnerIdAndNameIgnoreCase(userId, normalized)) {
-            throw new IllegalArgumentException("该学科标签已存在");
-        }
-        User owner = userRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("User not found"));
-        MistakeSubjectTag tag = new MistakeSubjectTag();
-        tag.setOwner(owner);
-        tag.setName(normalized);
-        subjectTagRepository.save(tag);
-        return toSubjectTagResponse(tag);
+        throw new IllegalArgumentException("科目标签由一级科目文件夹自动同步，请在个人设置中维护考研科目");
     }
 
     @Transactional
     public void deleteSubjectTag(Long userId, Long tagId) {
-        MistakeSubjectTag tag = subjectTagRepository.findByIdAndOwnerId(tagId, userId)
-                .orElseThrow(() -> new IllegalArgumentException("学科标签不存在或无权访问"));
-        if (subjectTagRepository.isUsed(tagId)) {
-            throw new IllegalArgumentException("该学科标签仍被错题使用，不能删除");
-        }
-        subjectTagRepository.delete(tag);
+        throw new IllegalArgumentException("科目标签由一级科目文件夹自动同步，不能在错题模块中删除");
     }
 
     @Transactional(readOnly = true)
@@ -552,6 +540,15 @@ public class MistakeService {
                 .orElseThrow(() -> new IllegalArgumentException("错题状态不存在或无权访问"));
     }
 
+    private java.util.Set<String> subjectFolderNames(Long userId) {
+        return folderRepository.findByOwnerIdAndSubjectFolderTrueOrderBySubjectOrderAscCreatedAtAsc(userId).stream()
+                .filter(folder -> folder.getParent() == null)
+                .map(StudyFolder::getName)
+                .filter(name -> name != null && !name.isBlank())
+                .map(String::trim)
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+    }
+
     private void deleteSolutionFile(MistakeQuestion mistake) throws IOException {
         if (mistake.getSolutionStoredPath() != null && !mistake.getSolutionStoredPath().isBlank()) {
             Files.deleteIfExists(Path.of(mistake.getSolutionStoredPath()));
@@ -634,7 +631,10 @@ public class MistakeService {
                 mistake.getSolutionStoredPath() != null && !mistake.getSolutionStoredPath().isBlank(),
                 questionAttachments(mistake),
                 solutionAttachments(mistake),
-                mistake.getSubjectTags().stream().map(this::toSubjectTagResponse).toList(),
+                mistake.getSubjectTags().stream()
+                        .filter(tag -> subjectFolderNames(mistake.getOwner().getId()).contains(tag.getName()))
+                        .map(this::toSubjectTagResponse)
+                        .toList(),
                 mistake.isMastered(),
                 status == null ? null : status.getId(),
                 statusName,

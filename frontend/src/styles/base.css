@@ -55,6 +55,9 @@ select:disabled {
   gap: 32px;
   align-items: center;
   padding: 48px clamp(24px, 7vw, 120px);
+  background:
+    linear-gradient(90deg, rgba(246, 243, 236, 0.72) 0%, rgba(246, 243, 236, 0.62) 52%, rgba(246, 243, 236, 0.48) 100%),
+    url("../assets/auth-background.png") center / cover no-repeat;
 }
 
 .auth-copy h1 {
@@ -69,25 +72,23 @@ select:disabled {
   color: var(--muted);
   font-size: 18px;
   line-height: 1.9;
-  text-wrap: pretty;
+  white-space: nowrap;
 }
 
 .brand-mark {
   width: 64px;
   height: 64px;
-  display: grid;
-  place-items: center;
   border: 1px solid var(--line);
-  background: var(--primary);
-  color: white;
-  font-weight: 800;
-  font-size: 28px;
+  border-radius: 14px;
+  display: block;
+  object-fit: cover;
+  box-shadow: 0 14px 30px rgba(15, 118, 110, 0.16);
 }
 
 .brand-mark.small {
   width: 40px;
   height: 40px;
-  font-size: 18px;
+  border-radius: 10px;
 }
 
 .auth-card,

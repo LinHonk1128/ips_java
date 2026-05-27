@@ -210,6 +210,73 @@
   font-size: 12px;
 }
 
+.source-feedback-btn {
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    color 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.source-feedback-btn.clear {
+  border-color: #8ac5a7;
+  background: #eef8f2;
+  color: #21643f;
+}
+
+.source-feedback-btn.forgot {
+  border-color: #dfb08b;
+  background: #fff4ea;
+  color: #864817;
+}
+
+.source-feedback-btn:hover {
+  transform: translateY(-1px);
+}
+
+.source-feedback-btn:disabled {
+  cursor: wait;
+  opacity: 0.58;
+  transform: none;
+}
+
+.source-feedback-result {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  animation: sourceFeedbackIn 0.24s ease-out;
+}
+
+.source-feedback-result.clear {
+  border-color: #8ac5a7;
+  background: #e6f6ed;
+  color: #1f663f;
+}
+
+.source-feedback-result.forgot {
+  border-color: #df9d8f;
+  background: #fff0ed;
+  color: #8d3728;
+}
+
+@keyframes sourceFeedbackIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .chunk-detail-modal {
   position: fixed;
   inset: 0;

@@ -3,17 +3,13 @@ server:
 
 spring:
   datasource:
-    url: jdbc:h2:file:./data/smart-exam;MODE=MySQL;DATABASE_TO_UPPER=false
-    driver-class-name: org.h2.Driver
-    username: sa
-    password:
+    url: jdbc:mysql://localhost:3306/smart_exam?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: "111111"
   sql:
     init:
-      mode: always
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
+      mode: never
   jpa:
     hibernate:
       ddl-auto: update
@@ -38,3 +34,15 @@ app:
     enabled: true
     url: "http://localhost:9200"
     index: "smart_exam_chunks"
+  demo-data:
+    enabled: false
+  ai:
+    chat:
+      model: "deepseek-v4-flash"
+      endpoint: "https://api.deepseek.com/v1/chat/completions"
+      api-key: "sk-cec0ba5aa1fc4cf1932cbf264bba0de5"
+    embedding:
+      model: "text-embedding-v4"
+      endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings"
+      api-key: "sk-a3bbd5a93b10442db5353b1e2b0895bd"
+      dimensions: 1536

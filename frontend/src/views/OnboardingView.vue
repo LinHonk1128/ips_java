@@ -1,7 +1,7 @@
 <template>
 <section class="auth-panel onboarding-panel" aria-label="学习信息初始化">
       <div class="auth-copy">
-        <div class="brand-mark">研</div>
+        <img class="brand-mark" :src="brandLogo" alt="智能考研系统标识" />
         <h1>设置学习画像基础信息</h1>
         <p>先确定考研日期和一级学科文件夹，后续资料、问答、错题和画像都会按这些学科聚合。</p>
       </div>
@@ -29,6 +29,7 @@
     </section>
 </template>
 <script setup>
+import brandLogo from '../assets/brand-logo.svg'
 import { useAppContext } from '../composables/appContext'
 
 const { FolderPlus, onboardingForm, loading, error, examDate, todayIso, canSubmitOnboarding, syncOnboardingSubjects, submitOnboarding } = useAppContext()

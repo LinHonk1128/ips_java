@@ -1,5 +1,5 @@
-import * as echarts from 'echarts'
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
+﻿import * as echarts from 'echarts'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
   Bold,
   BookOpenCheck,
@@ -110,6 +110,8 @@ const examDateInput = ref(null)
 const profileOverview = ref(null)
 const profileSubjects = ref([])
 const profileWeakChunks = ref([])
+const profileWeakChunkPage = ref(1)
+const profileWeakChunkPageSize = 5
 const profileTrends = ref([])
 const profileDistribution = ref(null)
 const profileActivity = ref(null)
@@ -198,26 +200,32 @@ const browseSolutionVisibility = ref({})
 const editingStatusMistakeId = ref(null)
 const browseSubjectFilterIds = ref([])
 const browseStatusFilterKeys = ref([])
+const browseMistakePage = ref(1)
+const browseMistakePageSize = 5
 const solutionPreviewUrls = ref({})
 const questionPreviewUrls = ref({})
 const attachmentPreviewUrls = ref({})
 const mistakeModule = ref('')
+const legacyDefaultSystemPrompt = '优先依据当前知识库回答；给出可追溯依据；如果资料不足，明确说明无法从知识库确认。'
 const defaultAiSettings = {
   aiRole: '严谨的考研答疑老师',
-  systemPrompt: '优先依据当前知识库回答；给出可追溯依据；如果资料不足，明确说明无法从知识库确认。',
-  chatModel: 'gpt-4o-mini',
+  systemPrompt: `请优先依据当前知识库内容回答，回答要符合考研学生的理解水平，不要直接复制资料原文，要用更容易理解的方式解释。
+
+如果知识库内容与问题高度相关：请基于资料内容回答，可以适当改写、举例或梳理逻辑，但不要加入资料无法支持的结论。
+如果知识库内容只提供了部分依据：请先说明“根据当前资料可以确定的是……”，再把可确认内容讲清楚。如需补充通用知识，请单独标明“补充理解”，并避免把补充内容说成资料原文依据。
+如果知识库内容不足或无关：请明确说明“无法从当前知识库确认”，可以提示用户补充资料或换一种问法，不要编造。`,
+  chatModel: '',
   chatApiKey: '',
-  chatEndpoint: 'https://api.openai.com/v1/chat/completions',
-  embeddingModel: 'text-embedding-3-small',
+  chatEndpoint: '',
+  embeddingModel: '',
   embeddingApiKey: '',
-  embeddingEndpoint: 'https://api.openai.com/v1/embeddings',
+  embeddingEndpoint: '',
   embeddingDimensions: 1536
 }
 const aiPresetStorageKey = 'smart_exam_ai_setting_presets'
 const chatForm = reactive({ mode: 'QA', question: '', useKnowledgeBase: true, withCitations: true, deepAnswer: false })
 const teacherState = reactive({
   requirement: '',
-  subjectFolderId: '',
   currentQuestion: '',
   referenceAnswer: '',
   currentChunkId: null,
@@ -267,7 +275,7 @@ const pageMeta = {
   },
   chat: {
     title: '知识问答',
-    description: '选择一个文件夹作为知识范围，进行资料溯源答疑或教师式抽问。'
+    description: '选择一个文件夹作为知识范围，进行资料溯源答疑或定制练题。'
   },
   editor: {
     title: '上传编辑',
@@ -283,7 +291,7 @@ const pageMeta = {
   },
   settings: {
     title: 'AI 设置',
-    description: '配置答疑模式中的角色定位、提示词、模型服务和 API Key。'
+    description: '配置答疑助手中的角色定位、提示词、模型服务和 API Key。'
   }
 }
 
@@ -368,6 +376,45 @@ const profileDiagnosisSummary = computed(() => {
   const diagnosis = profileDiagnosis.value
   return diagnosis?.aiSummary || diagnosis?.summary || '上传资料并产生练习记录后，会生成学习诊断和今日建议。'
 })
+const profileWeakChunkPageCount = computed(() => Math.max(1, Math.ceil(profileWeakChunks.value.length / profileWeakChunkPageSize)))
+const profileWeakChunkPageItems = computed(() => {
+  const pageCount = profileWeakChunkPageCount.value
+  const current = profileWeakChunkPage.value
+  if (pageCount <= 6) {
+    return Array.from({ length: pageCount }, (_, index) => index + 1)
+  }
+  const pages = new Set([1, pageCount, current, current - 1, current + 1])
+  if (current <= 3) {
+    pages.add(2)
+    pages.add(3)
+    pages.add(4)
+  }
+  if (current >= pageCount - 2) {
+    pages.add(pageCount - 3)
+    pages.add(pageCount - 2)
+    pages.add(pageCount - 1)
+  }
+  const sorted = [...pages]
+    .filter((page) => page >= 1 && page <= pageCount)
+    .sort((left, right) => left - right)
+  return sorted.flatMap((page, index) => {
+    const previous = sorted[index - 1]
+    if (index > 0 && page - previous > 1) {
+      return [`ellipsis-${previous}-${page}`, page]
+    }
+    return [page]
+  })
+})
+const paginatedProfileWeakChunks = computed(() => {
+  const start = (profileWeakChunkPage.value - 1) * profileWeakChunkPageSize
+  return profileWeakChunks.value.slice(start, start + profileWeakChunkPageSize)
+})
+const profileWeakChunkPageSummary = computed(() => {
+  if (profileWeakChunks.value.length === 0) return '0 / 0'
+  const start = (profileWeakChunkPage.value - 1) * profileWeakChunkPageSize + 1
+  const end = Math.min(start + profileWeakChunkPageSize - 1, profileWeakChunks.value.length)
+  return `${start}-${end} / ${profileWeakChunks.value.length}`
+})
 const profileDiagnosisMessage = computed(() => {
   if (profileDiagnosisLoading.value) {
     return '正在等待大模型生成学习诊断…'
@@ -389,9 +436,9 @@ const currentChatHasMessages = computed(() => messages.value.length > 0)
 const chatInputDisabled = computed(() => chatLoading.value || (chatForm.mode !== 'TEACHER' && chatForm.useKnowledgeBase && !activeFolder.value))
 const canSubmitChat = computed(() => !loading.value && !chatInputDisabled.value && (chatForm.mode === 'TEACHER' ? Boolean(activeFolder.value) : chatForm.question.trim().length > 0))
 const chatPlaceholder = computed(() => chatForm.mode === 'TEACHER'
-  ? '输入教师模式提问要求，例如：CPU、进程调度、排序算法'
+  ? '输入定制练题提问要求，例如：CPU、进程调度、排序算法'
   : chatForm.useKnowledgeBase
-    ? '输入问题，或在教师模式下输入：开始抽问本章重点'
+    ? '输入问题；切换到定制练题后可输入：本章重点'
     : '不引用知识库，直接输入要和大模型聊的问题'
 )
 const pendingChatText = computed(() => {
@@ -404,7 +451,7 @@ const emptyChatTitle = computed(() => {
 })
 const emptyChatDescription = computed(() => {
   if (!chatForm.useKnowledgeBase) return '当前不会检索资料片段，也不会返回来源引用。'
-  return '答疑模式会追溯资料来源，教师模式会根据知识点向你提问。'
+  return '答疑助手会追溯资料来源，定制练题会按约束生成练习题。'
 })
 const visibleFolders = computed(() => {
   const parentId = activeFolder.value?.id ?? null
@@ -479,6 +526,45 @@ const filteredMistakes = computed(() => {
     return matchesSubject && matchesStatus
   })
 })
+const browseMistakePageCount = computed(() => Math.max(1, Math.ceil(filteredMistakes.value.length / browseMistakePageSize)))
+const browseMistakePageItems = computed(() => {
+  const pageCount = browseMistakePageCount.value
+  const current = browseMistakePage.value
+  if (pageCount <= 6) {
+    return Array.from({ length: pageCount }, (_, index) => index + 1)
+  }
+  const pages = new Set([1, pageCount, current, current - 1, current + 1])
+  if (current <= 3) {
+    pages.add(2)
+    pages.add(3)
+    pages.add(4)
+  }
+  if (current >= pageCount - 2) {
+    pages.add(pageCount - 3)
+    pages.add(pageCount - 2)
+    pages.add(pageCount - 1)
+  }
+  const sorted = [...pages]
+    .filter((page) => page >= 1 && page <= pageCount)
+    .sort((left, right) => left - right)
+  return sorted.flatMap((page, index) => {
+    const previous = sorted[index - 1]
+    if (index > 0 && page - previous > 1) {
+      return [`ellipsis-${previous}-${page}`, page]
+    }
+    return [page]
+  })
+})
+const paginatedMistakes = computed(() => {
+  const start = (browseMistakePage.value - 1) * browseMistakePageSize
+  return filteredMistakes.value.slice(start, start + browseMistakePageSize)
+})
+const browseMistakePageSummary = computed(() => {
+  if (filteredMistakes.value.length === 0) return '0 / 0'
+  const start = (browseMistakePage.value - 1) * browseMistakePageSize + 1
+  const end = Math.min(start + browseMistakePageSize - 1, filteredMistakes.value.length)
+  return `${start}-${end} / ${filteredMistakes.value.length}`
+})
 const practiceCurrentQuestion = computed(() => practiceQuestions.value[practiceIndex.value] || null)
 const practiceClock = computed(() => {
   const minutes = Math.floor(practiceRemainingSeconds.value / 60)
@@ -504,6 +590,23 @@ const todaysHomePlanItems = computed(() => homePlanItems.value
   .filter((item) => item.startDate === todayIso.value && item.status !== 'DONE')
   .sort((left, right) => `${left.startTime}`.localeCompare(`${right.startTime}`))
 )
+
+watch([browseSubjectFilterIds, browseStatusFilterKeys], () => {
+  browseMistakePage.value = 1
+}, { deep: true })
+
+watch(browseMistakePageCount, (pageCount) => {
+  if (browseMistakePage.value > pageCount) {
+    browseMistakePage.value = pageCount
+  }
+})
+
+watch(profileWeakChunkPageCount, (pageCount) => {
+  if (profileWeakChunkPage.value > pageCount) {
+    profileWeakChunkPage.value = pageCount
+  }
+})
+
 const currentHomeTask = computed(() => {
   const now = new Date(homeClockNow.value)
   const minutes = now.getHours() * 60 + now.getMinutes()
@@ -739,7 +842,7 @@ function saveCurrentChatHistory() {
   const savedMessages = messages.value.map(({ role, content, sources, teacherQuestion, referenceAnswer, chunkId, feedbackType, addedToMistake }) => ({
     role,
     content,
-    sources,
+    sources: (sources || []).map(({ feedbackPending, ...source }) => source),
     teacherQuestion,
     referenceAnswer,
     chunkId,
@@ -825,7 +928,7 @@ function historyTitle(messages) {
 }
 
 function chatModeLabel(mode) {
-  return mode === 'TEACHER' ? '教师模式' : '答疑模式'
+  return mode === 'TEACHER' ? '定制练题' : '答疑助手'
 }
 
 function formatHistoryTime(value) {
@@ -2337,6 +2440,17 @@ async function deleteFile(file) {
   })
 }
 
+function chatHistoryPayload() {
+  return messages.value
+    .filter((message) => ['user', 'assistant'].includes(message.role) && message.content?.trim())
+    .slice(0, -1)
+    .slice(-6)
+    .map((message) => ({
+      role: message.role,
+      content: message.content.trim().slice(0, 1200)
+    }))
+}
+
 async function ask() {
   const question = chatForm.question.trim()
   if (chatForm.mode === 'TEACHER') {
@@ -2352,7 +2466,7 @@ async function ask() {
   activeSource.value = null
   chatLoading.value = true
   await run(async () => {
-    const payload = { ...aiSettings, ...chatForm, question, folderId: activeFolder.value?.id ?? null }
+    const payload = { ...aiSettings, ...chatForm, question, messages: chatHistoryPayload(), folderId: activeFolder.value?.id ?? null }
     const assistantMessage = { role: 'assistant', content: '', sources: [] }
     messages.value.push(assistantMessage)
     try {
@@ -2387,7 +2501,6 @@ async function requestTeacherQuestion(resetAsked = false) {
     const response = await chatApi.teacherQuestion({
       ...aiSettings,
       folderId: activeFolder.value.id,
-      subjectFolderId: teacherState.subjectFolderId || null,
       requirement,
       excludeChunkIds: teacherState.askedChunkIds
     })
@@ -2419,25 +2532,16 @@ async function nextTeacherQuestion() {
   await requestTeacherQuestion(false)
 }
 
-async function feedbackTeacherMessage(message, type) {
-  if (!message?.chunkId || message.feedbackType === type) return
-  await run(async () => {
-    const updated = await chatApi.feedbackChunk(message.chunkId, { type })
-    message.feedbackType = type
-    updateSourceStats(message.chunkId, updated)
-    saveCurrentChatHistory()
-    await loadKnowledgeProfile()
-  })
-}
-
 async function addTeacherMessageToMistake(message) {
   if (!message?.chunkId || message.addedToMistake) return
   await run(async () => {
+    const forgotFromCitation = (message.sources || [])
+      .some((source) => source.chunkId === message.chunkId && source.feedbackType === 'FORGOT')
     const saved = await mistakeApi.createFromTeacherQuestion({
       chunkId: message.chunkId,
       questionText: message.content.replace(/\s*\[1\]\s*$/, ''),
       solutionText: message.referenceAnswer || '',
-      feedbackAlreadyForgot: message.feedbackType === 'FORGOT',
+      feedbackAlreadyForgot: message.feedbackType === 'FORGOT' || forgotFromCitation,
       subjectTagIds: []
     })
     mistakes.value = [saved, ...mistakes.value.filter((item) => item.id !== saved.id)]
@@ -2448,11 +2552,19 @@ async function addTeacherMessageToMistake(message) {
 }
 
 async function feedbackActiveSource(type) {
-  if (!activeSource.value?.chunkId) return
+  const source = activeSource.value
+  if (!source?.chunkId || source.feedbackType || source.feedbackPending) return
+  source.feedbackPending = true
   await run(async () => {
-    const updated = await chatApi.feedbackChunk(activeSource.value.chunkId, { type })
-    updateSourceStats(activeSource.value.chunkId, updated)
-    await loadKnowledgeProfile()
+    try {
+      const updated = await chatApi.feedbackChunk(source.chunkId, { type })
+      source.feedbackType = type
+      updateSourceStats(source.chunkId, updated)
+      saveCurrentChatHistory()
+      await loadKnowledgeProfile()
+    } finally {
+      source.feedbackPending = false
+    }
   })
 }
 
@@ -3108,7 +3220,10 @@ async function persistRemoteAiSettingPresets() {
 }
 
 function currentAiSettingsSnapshot() {
-  return normalizeAiSettings({ ...aiSettings })
+  return {
+    aiRole: aiSettings.aiRole,
+    systemPrompt: aiSettings.systemPrompt
+  }
 }
 
 async function saveAiPreset() {
@@ -3183,6 +3298,7 @@ async function loadKnowledgeProfile() {
     profileOverview.value = overview
     profileSubjects.value = subjects
     profileWeakChunks.value = weakChunks
+    profileWeakChunkPage.value = 1
     profileTrends.value = trends
     profileDistribution.value = distribution
     profileActivity.value = activity
@@ -3347,16 +3463,14 @@ function resetAiSettings() {
 }
 
 function normalizeAiSettings(settings) {
-  const chatModel = settings.chatModel === 'deepseek-chat'
-    ? 'deepseek-v4-flash'
-    : settings.chatModel || settings.model || defaultAiSettings.chatModel
+  const systemPrompt = settings.systemPrompt && settings.systemPrompt !== legacyDefaultSystemPrompt
+    ? settings.systemPrompt
+    : defaultAiSettings.systemPrompt
   return {
     ...defaultAiSettings,
-    ...settings,
-    chatModel,
-    chatEndpoint: settings.chatEndpoint || settings.endpoint || defaultAiSettings.chatEndpoint,
-    chatApiKey: settings.chatApiKey || settings.apiKey || defaultAiSettings.chatApiKey,
-    embeddingDimensions: Number(settings.embeddingDimensions || defaultAiSettings.embeddingDimensions)
+    aiRole: settings.aiRole || defaultAiSettings.aiRole,
+    systemPrompt,
+    embeddingDimensions: defaultAiSettings.embeddingDimensions
   }
 }
 
@@ -3368,6 +3482,7 @@ function logout() {
   profileOverview.value = null
   profileSubjects.value = []
   profileWeakChunks.value = []
+  profileWeakChunkPage.value = 1
   profileTrends.value = []
   profileDistribution.value = null
   profileActivity.value = null
@@ -3409,6 +3524,7 @@ function logout() {
   activeMistake.value = null
   browseSubjectFilterIds.value = []
   browseStatusFilterKeys.value = []
+  browseMistakePage.value = 1
   resetMistakeForm()
   closePractice()
   mistakeModule.value = ''
@@ -3439,5 +3555,6 @@ function tagLabel(tag) {
   return { TEXTBOOK: '教材', MATERIAL: '资料', NOTE: '笔记', EXERCISE: '习题', OTHER: '其他' }[tag] || '其他'
 }
 
-  return { Bold, BookOpenCheck, Bot, CalendarDays, CalendarPlus, ChevronRight, ClipboardCopy, Clock, Eye, EyeOff, FileText, Folder, FolderOpen, FolderPlus, Image, KeyRound, Library, LoaderCircle, LogIn, LogOut, Italic, List, ListOrdered, MessageSquare, MoveRight, NotebookPen, Palette, Pencil, RefreshCw, RotateCcw, Save, ScanText, Search, Send, Settings, Sparkles, Table2, Tag, Timer, Trash2, Underline, Undo2, Upload, UserCog, aiSettingsApi, authApi, chatApi, clearSession, fileApi, folderApi, getSession, getToken, knowledgeProfileApi, mistakeApi, setSession, studyPlanApi, studyProfileApi, session, authMode, authForm, folderForm, editFolderForm, folders, files, activeFolder, activeFile, activePage, studyProfile, onboardingForm, personalSettingsForm, uploadTag, fileInput, editorElement, activeFilePages, activeFilePageIndex, editorTextColor, loading, homeClockNow, homeClockTimerId, chatLoading, noteLoading, error, chatMessages, activeConversationIds, folderChatHistories, historyPanelOpen, activeSource, activeChunkDetail, movingFile, editingFolder, editingFileName, editingFileNameValue, savingFileName, fileNameInput, moveFileTargetId, rootFolderCollapsed, collapsedFolderIds, studyPlanItems, homePlanItems, planDraftItems, planSessionByWeek, planModule, knowledgeModule, planWeekStart, savedExamDate, examDate, examDateInput, profileOverview, profileSubjects, profileWeakChunks, profileTrends, profileDistribution, profileActivity, profileFourteenDayActivity, profileRisk, profilePressureRisk, profileDiagnosis, profileTrendDays, profilePressureSubjectId, profileLoading, profileDiagnosisLoading, profileDiagnosisRequestId, profileSubjectChartRef, profileDistributionChartRef, profileTrendChartRef, profileHeatmapChartRef, profilePressureChartRef, profileCharts, editingPlanItem, planAiMessages, planAiInput, planAiLoading, planGenerateLoading, planSaveLoading, planUndoLoading, planLastOperations, planPendingOperations, planUndoStack, planForm, mistakes, mistakeStatuses, mistakeSubjectTags, activeMistake, editingMistake, mistakeQuestionAttachmentFile, mistakeSolutionFile, questionImageItems, solutionImageItems, enlargedAttachment, recognitionFile, recognitionText, recognitionLoading, newMistakeStatusName, newMistakeSubjectTagName, subjectTagCreatorOpen, mistakeForm, mistakeChunkQuery, mistakeChunkCandidates, mistakeChunkSearchLoading, mistakeChunkSubjectFolderId, mistakeChunkFileId, mistakeChunkFiles, practiceForm, practiceQuestions, practiceIndex, practiceStarted, practiceFinished, practiceResults, practiceRemainingSeconds, practiceTimerId, showBrowseSolution, browseSolutionVisibility, editingStatusMistakeId, browseSubjectFilterIds, browseStatusFilterKeys, solutionPreviewUrls, questionPreviewUrls, attachmentPreviewUrls, mistakeModule, defaultAiSettings, aiPresetStorageKey, chatForm, teacherState, aiSettings, aiSettingPresets, selectedAiPresetId, aiPresetName, settingsSaved, maxFolderDepth, chatHistoryRetentionMs, navItems, pageMeta, knowledgeModuleMeta, currentPageMeta, pageTitle, pageDescription, todayIso, examCountdownDays, canSubmitOnboarding, canSavePersonalSettings, subjectFolders, selectedPressureSubject, profileMetricCards, profileDiagnosisSummary, profileDiagnosisMessage, profileDiagnosisInsufficient, profileDiagnosisItems, profileSuggestions, mistakeSubjectOptions, messages, currentChatHasMessages, chatInputDisabled, canSubmitChat, chatPlaceholder, pendingChatText, emptyChatTitle, emptyChatDescription, visibleFolders, folderTree, folderPath, fileMoveTargetOptions, canSubmitFileMove, currentFolderName, canCreateFolder, folderNamePlaceholder, createFolderHint, emptyFolderTitle, emptyFolderDescription, mistakeStatusOptions, unmasteredStatusOptions, filteredMistakes, practiceCurrentQuestion, practiceClock, planWeekDays, planWeekEnd, planWeekLabel, studyPlanItemsByDate, todaysHomePlanItems, currentHomeTask, currentHomeTaskState, planDraftItemsByDate, planDraftDirty, planDraftStats, planStats, groupPlanItemsByDate, toDateInputValue, parseDateInput, addDays, startOfWeekIso, formatShortDate, isToday, normalizeTimeValue, planTypeLabel, planPriorityLabel, planStatusLabel, timeToMinutes, examDateStorageKey, loadExamDate, saveExamDate, clearExamDate, openExamDatePicker, folderChatHistoryKey, legacyChatHistoryKey, loadChatHistory, loadFolderHistories, loadLegacyHistories, saveCurrentChatHistory, startNewConversation, openConversation, deleteChatHistory, normalizeHistoryItem, dedupeHistories, historyTitle, chatModeLabel, formatHistoryTime, setActivePage, openKnowledgeModule, submitAuth, initializeSessionData, loadStudyProfile, syncPersonalSettingsForm, addPersonalSubject, removePersonalSubject, savePersonalSettings, syncOnboardingSubjects, submitOnboarding, loadStudyPlan, syncHomePlanItemsFromCurrentWeek, clonePlanItems, clonePlanOperations, currentPlanSessionKey, persistPlanSession, restorePlanSession, syncPlanDraftFromReal, resetPlanDraft, pushPlanUndoSnapshot, undoStudyPlanChange, restoreStudyPlanSnapshot, shiftPlanWeek, goCurrentPlanWeek, openNewStudyPlan, openPlanModule, openPlannerAiPage, editStudyPlan, resetPlanForm, studyPlanPayloadFromForm, studyPlanPayloadFromItem, saveStudyPlanItem, deleteStudyPlanItem, toggleStudyPlanDone, compactPlanMessages, displayPlanAiMessage, cleanPlanAssistantContent, planAiBasePayload, initialPlanAiMessages, clearPlanAiChat, sendPlanAiMessage, generateStudyPlanFromAi, updateStudyPlanDraftFromAi, operationForApply, savePlanAiDraft, loadMistakeData, selectedMistakeStatus, resetMistakeForm, editMistake, openMistakeModule, backToMistakeMenu, saveMistake, setUnmasteredStatus, searchMistakeChunks, handleMistakeChunkSubjectChange, loadMistakeChunkFiles, syncMistakeSubjectTagFromFolder, subjectFolderForMistake, isMistakeChunkLinked, addMistakeLinkedChunk, removeMistakeLinkedChunk, openChunkDetail, onImageSelect, removeImageItem, clearImageItems, enlargeAttachment, enlargeSavedAttachment, displayNameWithoutExtension, createMistakeStatus, createSubjectTag, deleteSubjectTag, toggleIdInArray, removeIdFromArray, recognizeMistakeFile, copyRecognitionText, deleteMistakeStatus, savedImageItems, newImageItems, retainedAttachmentIds, setMistakeStatus, statusKeyForMistake, openMistakeStatusEditor, changeMistakeStatusFromSelect, isBrowseSolutionVisible, toggleBrowseSolution, setAllBrowseSolutions, deleteMistake, startPractice, finishPractice, stopPracticeTimer, closePractice, nextPracticeQuestion, practiceResultFor, recordPracticeResult, refreshAttachmentPreviews, loadSavedAttachmentPreview, loadAttachmentPreview, revokeQuestionPreview, revokeSolutionPreview, loadFolders, createFolder, selectRoot, openEditFolder, cancelEditFolder, saveFolderEdit, deleteFolder, collectFolderIds, hasFolderChildren, toggleRootFolder, toggleFolderCollapse, folderOptionLabel, openMoveFile, cancelMoveFile, moveFile, useCurrentFolderAsKnowledgeBase, selectFolder, selectFile, openFileInEditor, setChatMode, handleKnowledgeModeChange, setEditorContent, clearEditorContent, syncEditorContent, setEditorPage, renderCurrentEditorPage, goFilePage, clampPageIndex, paginateEditorContent, formatEditor, setEditorTextColor, insertTable, isHtmlContent, plainTextToEditorHtml, renderEditorHtml, renderMathInHtml, renderRichText, splitMathSegments, findNextMathStart, renderMarkdownInline, renderMathExpression, escapeHtml, uploadFile, saveFileText, toggleKnowledge, deleteFile, ask, requestTeacherQuestion, nextTeacherQuestion, feedbackTeacherMessage, addTeacherMessageToMistake, feedbackActiveSource, updateSourceStats, createNoteFromConversation, showSource, messageParts, sourceLabel, displayFileName, formatPercent, subjectProgressDegrees, subjectAccent, confidenceRank, confidenceLabel, recentPracticeAccuracy, recentAccuracyComparison, addPracticeCounts, examPrepProgress, formatDateTime, emptyChartGraphic, ensureProfileChart, renderProfileCharts, renderSubjectProfileChart, renderDistributionProfileChart, renderTrendProfileChart, renderHeatmapProfileChart, renderPressureProfileChart, resizeProfileCharts, disposeProfileCharts, openTeacherForWeakChunk, openWeakChunkInEditor, originalFileExtension, fileNameWithPreservedExtension, startFileNameEdit, cancelFileNameEdit, saveFileName, openSourceFile, focusExcerpt, scrollEditorSelectionIntoView, findExcerptPageIndex, editorPagePlainText, rangeFromTextOffsets, findExcerptRange, findNormalizedRange, findLooseNormalizedRange, clearChatMessages, loadAiSettings, loadAiSettingPresets, normalizeAiPreset, persistAiSettingPresets, mergeAiSettingPresets, persistRemoteAiSettingPresets, currentAiSettingsSnapshot, saveAiPreset, applyAiPreset, syncSelectedAiPresetName, deleteAiPreset, loadRemoteAiSettings, loadKnowledgeProfile, profileDiagnosisCacheKey, profileDiagnosisAiCacheKey, hasTodayProfileDiagnosisAi, markTodayProfileDiagnosisAi, readCachedProfileDiagnosis, cacheProfileDiagnosis, ensureDailyProfileDiagnosis, loadProfileDiagnosis, refreshProfileDiagnosis, refreshProfileRecommendations, changeProfilePressureSubject, changeProfileTrendDays, openTeacherForSuggestion, addSuggestionToPlan, saveAiSettings, resetAiSettings, normalizeAiSettings, logout, run, tagLabel }
+  return { Bold, BookOpenCheck, Bot, CalendarDays, CalendarPlus, ChevronRight, ClipboardCopy, Clock, Eye, EyeOff, FileText, Folder, FolderOpen, FolderPlus, Image, KeyRound, Library, LoaderCircle, LogIn, LogOut, Italic, List, ListOrdered, MessageSquare, MoveRight, NotebookPen, Palette, Pencil, RefreshCw, RotateCcw, Save, ScanText, Search, Send, Settings, Sparkles, Table2, Tag, Timer, Trash2, Underline, Undo2, Upload, UserCog, aiSettingsApi, authApi, chatApi, clearSession, fileApi, folderApi, getSession, getToken, knowledgeProfileApi, mistakeApi, setSession, studyPlanApi, studyProfileApi, session, authMode, authForm, folderForm, editFolderForm, folders, files, activeFolder, activeFile, activePage, studyProfile, onboardingForm, personalSettingsForm, uploadTag, fileInput, editorElement, activeFilePages, activeFilePageIndex, editorTextColor, loading, homeClockNow, homeClockTimerId, chatLoading, noteLoading, error, chatMessages, activeConversationIds, folderChatHistories, historyPanelOpen, activeSource, activeChunkDetail, movingFile, editingFolder, editingFileName, editingFileNameValue, savingFileName, fileNameInput, moveFileTargetId, rootFolderCollapsed, collapsedFolderIds, studyPlanItems, homePlanItems, planDraftItems, planSessionByWeek, planModule, knowledgeModule, planWeekStart, savedExamDate, examDate, examDateInput, profileOverview, profileSubjects, profileWeakChunks, profileWeakChunkPage, profileWeakChunkPageCount, profileWeakChunkPageItems, profileWeakChunkPageSummary, paginatedProfileWeakChunks, profileTrends, profileDistribution, profileActivity, profileFourteenDayActivity, profileRisk, profilePressureRisk, profileDiagnosis, profileTrendDays, profilePressureSubjectId, profileLoading, profileDiagnosisLoading, profileDiagnosisRequestId, profileSubjectChartRef, profileDistributionChartRef, profileTrendChartRef, profileHeatmapChartRef, profilePressureChartRef, profileCharts, editingPlanItem, planAiMessages, planAiInput, planAiLoading, planGenerateLoading, planSaveLoading, planUndoLoading, planLastOperations, planPendingOperations, planUndoStack, planForm, mistakes, mistakeStatuses, mistakeSubjectTags, activeMistake, editingMistake, mistakeQuestionAttachmentFile, mistakeSolutionFile, questionImageItems, solutionImageItems, enlargedAttachment, recognitionFile, recognitionText, recognitionLoading, newMistakeStatusName, newMistakeSubjectTagName, subjectTagCreatorOpen, mistakeForm, mistakeChunkQuery, mistakeChunkCandidates, mistakeChunkSearchLoading, mistakeChunkSubjectFolderId, mistakeChunkFileId, mistakeChunkFiles, practiceForm, practiceQuestions, practiceIndex, practiceStarted, practiceFinished, practiceResults, practiceRemainingSeconds, practiceTimerId, showBrowseSolution, browseSolutionVisibility, editingStatusMistakeId, browseSubjectFilterIds, browseStatusFilterKeys, browseMistakePage, browseMistakePageCount, browseMistakePageItems, browseMistakePageSummary, paginatedMistakes, solutionPreviewUrls, questionPreviewUrls, attachmentPreviewUrls, mistakeModule, defaultAiSettings, aiPresetStorageKey, chatForm, teacherState, aiSettings, aiSettingPresets, selectedAiPresetId, aiPresetName, settingsSaved, maxFolderDepth, chatHistoryRetentionMs, navItems, pageMeta, knowledgeModuleMeta, currentPageMeta, pageTitle, pageDescription, todayIso, examCountdownDays, canSubmitOnboarding, canSavePersonalSettings, subjectFolders, selectedPressureSubject, profileMetricCards, profileDiagnosisSummary, profileDiagnosisMessage, profileDiagnosisInsufficient, profileDiagnosisItems, profileSuggestions, mistakeSubjectOptions, messages, currentChatHasMessages, chatInputDisabled, canSubmitChat, chatPlaceholder, pendingChatText, emptyChatTitle, emptyChatDescription, visibleFolders, folderTree, folderPath, fileMoveTargetOptions, canSubmitFileMove, currentFolderName, canCreateFolder, folderNamePlaceholder, createFolderHint, emptyFolderTitle, emptyFolderDescription, mistakeStatusOptions, unmasteredStatusOptions, filteredMistakes, practiceCurrentQuestion, practiceClock, planWeekDays, planWeekEnd, planWeekLabel, studyPlanItemsByDate, todaysHomePlanItems, currentHomeTask, currentHomeTaskState, planDraftItemsByDate, planDraftDirty, planDraftStats, planStats, groupPlanItemsByDate, toDateInputValue, parseDateInput, addDays, startOfWeekIso, formatShortDate, isToday, normalizeTimeValue, planTypeLabel, planPriorityLabel, planStatusLabel, timeToMinutes, examDateStorageKey, loadExamDate, saveExamDate, clearExamDate, openExamDatePicker, folderChatHistoryKey, legacyChatHistoryKey, loadChatHistory, loadFolderHistories, loadLegacyHistories, saveCurrentChatHistory, startNewConversation, openConversation, deleteChatHistory, normalizeHistoryItem, dedupeHistories, historyTitle, chatModeLabel, formatHistoryTime, setActivePage, openKnowledgeModule, submitAuth, initializeSessionData, loadStudyProfile, syncPersonalSettingsForm, addPersonalSubject, removePersonalSubject, savePersonalSettings, syncOnboardingSubjects, submitOnboarding, loadStudyPlan, syncHomePlanItemsFromCurrentWeek, clonePlanItems, clonePlanOperations, currentPlanSessionKey, persistPlanSession, restorePlanSession, syncPlanDraftFromReal, resetPlanDraft, pushPlanUndoSnapshot, undoStudyPlanChange, restoreStudyPlanSnapshot, shiftPlanWeek, goCurrentPlanWeek, openNewStudyPlan, openPlanModule, openPlannerAiPage, editStudyPlan, resetPlanForm, studyPlanPayloadFromForm, studyPlanPayloadFromItem, saveStudyPlanItem, deleteStudyPlanItem, toggleStudyPlanDone, compactPlanMessages, displayPlanAiMessage, cleanPlanAssistantContent, planAiBasePayload, initialPlanAiMessages, clearPlanAiChat, sendPlanAiMessage, generateStudyPlanFromAi, updateStudyPlanDraftFromAi, operationForApply, savePlanAiDraft, loadMistakeData, selectedMistakeStatus, resetMistakeForm, editMistake, openMistakeModule, backToMistakeMenu, saveMistake, setUnmasteredStatus, searchMistakeChunks, handleMistakeChunkSubjectChange, loadMistakeChunkFiles, syncMistakeSubjectTagFromFolder, subjectFolderForMistake, isMistakeChunkLinked, addMistakeLinkedChunk, removeMistakeLinkedChunk, openChunkDetail, onImageSelect, removeImageItem, clearImageItems, enlargeAttachment, enlargeSavedAttachment, displayNameWithoutExtension, createMistakeStatus, createSubjectTag, deleteSubjectTag, toggleIdInArray, removeIdFromArray, recognizeMistakeFile, copyRecognitionText, deleteMistakeStatus, savedImageItems, newImageItems, retainedAttachmentIds, setMistakeStatus, statusKeyForMistake, openMistakeStatusEditor, changeMistakeStatusFromSelect, isBrowseSolutionVisible, toggleBrowseSolution, setAllBrowseSolutions, deleteMistake, startPractice, finishPractice, stopPracticeTimer, closePractice, nextPracticeQuestion, practiceResultFor, recordPracticeResult, refreshAttachmentPreviews, loadSavedAttachmentPreview, loadAttachmentPreview, revokeQuestionPreview, revokeSolutionPreview, loadFolders, createFolder, selectRoot, openEditFolder, cancelEditFolder, saveFolderEdit, deleteFolder, collectFolderIds, hasFolderChildren, toggleRootFolder, toggleFolderCollapse, folderOptionLabel, openMoveFile, cancelMoveFile, moveFile, useCurrentFolderAsKnowledgeBase, selectFolder, selectFile, openFileInEditor, setChatMode, handleKnowledgeModeChange, setEditorContent, clearEditorContent, syncEditorContent, setEditorPage, renderCurrentEditorPage, goFilePage, clampPageIndex, paginateEditorContent, formatEditor, setEditorTextColor, insertTable, isHtmlContent, plainTextToEditorHtml, renderEditorHtml, renderMathInHtml, renderRichText, splitMathSegments, findNextMathStart, renderMarkdownInline, renderMathExpression, escapeHtml, uploadFile, saveFileText, toggleKnowledge, deleteFile, ask, requestTeacherQuestion, nextTeacherQuestion, addTeacherMessageToMistake, feedbackActiveSource, updateSourceStats, createNoteFromConversation, showSource, messageParts, sourceLabel, displayFileName, formatPercent, subjectProgressDegrees, subjectAccent, confidenceRank, confidenceLabel, recentPracticeAccuracy, recentAccuracyComparison, addPracticeCounts, examPrepProgress, formatDateTime, emptyChartGraphic, ensureProfileChart, renderProfileCharts, renderSubjectProfileChart, renderDistributionProfileChart, renderTrendProfileChart, renderHeatmapProfileChart, renderPressureProfileChart, resizeProfileCharts, disposeProfileCharts, openTeacherForWeakChunk, openWeakChunkInEditor, originalFileExtension, fileNameWithPreservedExtension, startFileNameEdit, cancelFileNameEdit, saveFileName, openSourceFile, focusExcerpt, scrollEditorSelectionIntoView, findExcerptPageIndex, editorPagePlainText, rangeFromTextOffsets, findExcerptRange, findNormalizedRange, findLooseNormalizedRange, clearChatMessages, loadAiSettings, loadAiSettingPresets, normalizeAiPreset, persistAiSettingPresets, mergeAiSettingPresets, persistRemoteAiSettingPresets, currentAiSettingsSnapshot, saveAiPreset, applyAiPreset, syncSelectedAiPresetName, deleteAiPreset, loadRemoteAiSettings, loadKnowledgeProfile, profileDiagnosisCacheKey, profileDiagnosisAiCacheKey, hasTodayProfileDiagnosisAi, markTodayProfileDiagnosisAi, readCachedProfileDiagnosis, cacheProfileDiagnosis, ensureDailyProfileDiagnosis, loadProfileDiagnosis, refreshProfileDiagnosis, refreshProfileRecommendations, changeProfilePressureSubject, changeProfileTrendDays, openTeacherForSuggestion, addSuggestionToPlan, saveAiSettings, resetAiSettings, normalizeAiSettings, logout, run, tagLabel }
 }
+

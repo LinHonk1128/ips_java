@@ -78,13 +78,6 @@
                 <button class="secondary-btn slim" type="button" :disabled="practiceIndex >= practiceQuestions.length - 1" @click="nextPracticeQuestion(1)">下一题</button>
                 <button class="secondary-btn slim" type="button" @click="closePractice">退出</button>
               </div>
-              <div class="practice-actions">
-                <button class="secondary-btn slim" type="button" :disabled="practiceResultFor(practiceCurrentQuestion)" @click="recordPracticeResult(practiceCurrentQuestion, true)">写对了</button>
-                <button class="secondary-btn slim" type="button" :disabled="practiceResultFor(practiceCurrentQuestion)" @click="recordPracticeResult(practiceCurrentQuestion, false)">写错了</button>
-                <span v-if="practiceResultFor(practiceCurrentQuestion)" class="empty-inline">
-                  已记录{{ practiceResultFor(practiceCurrentQuestion).correct ? '写对了' : '写错了' }}，更新 {{ practiceResultFor(practiceCurrentQuestion).updatedChunkCount }} 个知识片段
-                </span>
-              </div>
               <div v-if="practiceFinished" class="practice-answer">
                 <strong>答案解析</strong>
                 <div v-if="practiceCurrentQuestion.solutionText" v-html="renderRichText(practiceCurrentQuestion.solutionText)"></div>
@@ -101,6 +94,13 @@
                 </div>
                 <img v-if="solutionPreviewUrls[practiceCurrentQuestion.id] && !practiceCurrentQuestion.solutionAttachments?.length" :src="solutionPreviewUrls[practiceCurrentQuestion.id]" alt="解析图片" />
                 <span v-if="!practiceCurrentQuestion.solutionText && !practiceCurrentQuestion.hasSolutionFile">这道题还没有解析。</span>
+                <div class="practice-actions">
+                  <button class="secondary-btn slim" type="button" :disabled="practiceResultFor(practiceCurrentQuestion)" @click="recordPracticeResult(practiceCurrentQuestion, true)">写对了</button>
+                  <button class="secondary-btn slim" type="button" :disabled="practiceResultFor(practiceCurrentQuestion)" @click="recordPracticeResult(practiceCurrentQuestion, false)">写错了</button>
+                  <span v-if="practiceResultFor(practiceCurrentQuestion)" class="empty-inline">
+                    已记录{{ practiceResultFor(practiceCurrentQuestion).correct ? '写对了' : '写错了' }}，更新 {{ practiceResultFor(practiceCurrentQuestion).updatedChunkCount }} 个知识片段
+                  </span>
+                </div>
               </div>
             </div>
             <div v-else class="empty-note">暂无未掌握错题，先上传或把错题标记为未掌握。</div>

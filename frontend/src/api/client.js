@@ -63,6 +63,9 @@ function dispatchSseEvent(rawEvent, handlers) {
   if (eventName === 'done') {
     return JSON.parse(data)
   }
+  if (eventName === 'error') {
+    throw new Error(data || '问答流式响应中断')
+  }
   return null
 }
 
@@ -101,6 +104,9 @@ export async function streamApi(path, payload, handlers = {}) {
   }
   if (buffer.trim()) {
     donePayload = dispatchSseEvent(buffer, handlers) || donePayload
+  }
+  if (!donePayload) {
+    throw new Error('问答流式响应中断')
   }
   return donePayload
 }

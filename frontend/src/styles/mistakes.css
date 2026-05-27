@@ -35,6 +35,11 @@
   background: var(--panel);
 }
 
+.mistake-management-panel.status-only {
+  width: min(460px, 100%);
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .mistake-management-group {
   min-width: 0;
   display: grid;
@@ -411,6 +416,7 @@
   box-shadow: 0 12px 30px rgba(38, 35, 29, 0.06);
   cursor: pointer;
   overflow: hidden;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, background 160ms ease;
 }
 
 .mistake-card:hover,
@@ -419,7 +425,9 @@
   background:
     linear-gradient(90deg, rgba(15, 118, 110, 0.1), transparent 36%),
     #fffefb;
-  box-shadow: 0 16px 38px rgba(38, 35, 29, 0.1);
+  box-shadow: 0 22px 54px rgba(38, 35, 29, 0.16), 0 8px 20px rgba(15, 118, 110, 0.1);
+  transform: translateY(-2px);
+  z-index: 1;
 }
 
 .mistake-card.selected::before {
@@ -536,6 +544,53 @@
   padding: 12px 18px 14px;
   border-top: 1px solid rgba(55, 83, 78, 0.1);
   background: rgba(255, 253, 248, 0.58);
+}
+
+.mistake-pagination {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 2px 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.page-dot {
+  width: 34px;
+  min-height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.page-dot:hover,
+.page-dot.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+}
+
+.page-dot.ellipsis,
+.page-dot.ellipsis:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
 }
 
 .mistake-question img,

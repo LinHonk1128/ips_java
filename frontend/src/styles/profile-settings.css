@@ -556,6 +556,10 @@
   margin: 6px 0 0;
 }
 
+.profile-pagination {
+  margin-top: 6px;
+}
+
 .weak-chunk-meta,
 .source-stats,
 .source-actions,
@@ -575,6 +579,10 @@
 .source-actions,
 .teacher-actions {
   margin-top: 10px;
+}
+
+.source-actions {
+  min-height: 34px;
 }
 
 .linked-chunks {

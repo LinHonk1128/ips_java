@@ -2,13 +2,12 @@
 <section class="page-panel chat-page">
           <div class="qa-toolbar">
             <div class="mode-tabs">
-              <button :class="{ active: chatForm.mode === 'QA' }" @click="setChatMode('QA')">答疑模式</button>
-              <button :class="{ active: chatForm.mode === 'TEACHER' }" @click="setChatMode('TEACHER')">教师模式</button>
+              <button :class="{ active: chatForm.mode === 'QA' }" @click="setChatMode('QA')">答疑助手</button>
+              <button :class="{ active: chatForm.mode === 'TEACHER' }" @click="setChatMode('TEACHER')">定制练题</button>
             </div>
             <div class="ai-summary">
               <Bot :size="18" />
               <span>{{ aiSettings.aiRole }}</span>
-              <b>{{ aiSettings.chatModel }}</b>
               <button class="secondary-btn slim" type="button" @click="activePage = 'settings'">
                 <Settings :size="16" />
                 设置
@@ -67,11 +66,8 @@
                 </template>
               </div>
               <div v-if="chatForm.mode === 'TEACHER' && message.role === 'assistant' && message.teacherQuestion" class="teacher-actions">
-                <button class="secondary-btn slim" type="button" :disabled="message.feedbackType === 'CLEAR'" @click="feedbackTeacherMessage(message, 'CLEAR')">很清楚</button>
-                <button class="secondary-btn slim" type="button" :disabled="message.feedbackType === 'FORGOT'" @click="feedbackTeacherMessage(message, 'FORGOT')">忘记了</button>
                 <button class="secondary-btn slim" type="button" :disabled="message.addedToMistake" @click="addTeacherMessageToMistake(message)">添加到错题</button>
                 <button class="secondary-btn slim" type="button" @click="nextTeacherQuestion">下一题</button>
-                <span v-if="message.feedbackType" class="empty-inline">已记录：{{ message.feedbackType === 'CLEAR' ? '很清楚' : '忘记了' }}</span>
               </div>
             </article>
             <article v-if="chatLoading" class="message assistant pending-message" aria-live="polite">
@@ -96,8 +92,31 @@
                 <span>对 {{ activeSource.correctHitCount || 0 }} / 错 {{ activeSource.wrongHitCount || 0 }}</span>
               </div>
               <div class="source-actions">
-                <button class="secondary-btn slim" type="button" @click="feedbackActiveSource('CLEAR')">很清楚</button>
-                <button class="secondary-btn slim" type="button" @click="feedbackActiveSource('FORGOT')">忘记了</button>
+                <template v-if="!activeSource.feedbackType">
+                  <button
+                    class="secondary-btn slim source-feedback-btn clear"
+                    type="button"
+                    :disabled="activeSource.feedbackPending"
+                    @click="feedbackActiveSource('CLEAR')"
+                  >
+                    很清楚
+                  </button>
+                  <button
+                    class="secondary-btn slim source-feedback-btn forgot"
+                    type="button"
+                    :disabled="activeSource.feedbackPending"
+                    @click="feedbackActiveSource('FORGOT')"
+                  >
+                    忘记了
+                  </button>
+                </template>
+                <span
+                  v-else
+                  class="source-feedback-result"
+                  :class="activeSource.feedbackType === 'CLEAR' ? 'clear' : 'forgot'"
+                >
+                  已记录：{{ activeSource.feedbackType === 'CLEAR' ? '很清楚' : '忘记了' }}
+                </span>
               </div>
               <span>双击窗口可打开完整文件，并定位到这段依据。</span>
             </div>
@@ -110,12 +129,6 @@
 
           <form class="question-box" @submit.prevent="ask">
             <div class="question-main">
-              <div v-if="chatForm.mode === 'TEACHER'" class="teacher-filter">
-                <select v-model="teacherState.subjectFolderId">
-                  <option value="">当前文件夹范围</option>
-                  <option v-for="folder in subjectFolders" :key="folder.id" :value="folder.id">{{ folder.name }}</option>
-                </select>
-              </div>
               <textarea v-model="chatForm.question" :disabled="chatInputDisabled" :placeholder="chatPlaceholder" />
               <div v-if="chatForm.mode !== 'TEACHER'" class="chat-options">
                 <label class="chat-toggle">
@@ -143,5 +156,5 @@
 <script setup>
 import { useAppContext } from '../composables/appContext'
 
-const { Bot, Clock, LoaderCircle, MessageSquare, NotebookPen, RotateCcw, Send, Settings, Trash2, activeFolder, activePage, chatLoading, noteLoading, activeConversationIds, folderChatHistories, historyPanelOpen, activeSource, chatForm, teacherState, aiSettings, subjectFolders, messages, currentChatHasMessages, chatInputDisabled, canSubmitChat, chatPlaceholder, pendingChatText, emptyChatTitle, emptyChatDescription, startNewConversation, openConversation, deleteChatHistory, chatModeLabel, formatHistoryTime, setChatMode, handleKnowledgeModeChange, renderRichText, ask, nextTeacherQuestion, feedbackTeacherMessage, addTeacherMessageToMistake, feedbackActiveSource, createNoteFromConversation, showSource, messageParts, sourceLabel, formatPercent, openSourceFile } = useAppContext()
+const { Bot, Clock, LoaderCircle, MessageSquare, NotebookPen, RotateCcw, Send, Settings, Trash2, activeFolder, activePage, chatLoading, noteLoading, activeConversationIds, folderChatHistories, historyPanelOpen, activeSource, chatForm, aiSettings, messages, currentChatHasMessages, chatInputDisabled, canSubmitChat, chatPlaceholder, pendingChatText, emptyChatTitle, emptyChatDescription, startNewConversation, openConversation, deleteChatHistory, chatModeLabel, formatHistoryTime, setChatMode, handleKnowledgeModeChange, renderRichText, ask, nextTeacherQuestion, addTeacherMessageToMistake, feedbackActiveSource, createNoteFromConversation, showSource, messageParts, sourceLabel, formatPercent, openSourceFile } = useAppContext()
 </script>

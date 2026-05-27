@@ -52,7 +52,7 @@
 
             <div class="mistake-list">
               <article
-                v-for="mistake in filteredMistakes"
+                v-for="mistake in paginatedMistakes"
                 :key="mistake.id"
                 class="mistake-card"
                 :class="{ selected: activeMistake?.id === mistake.id }"
@@ -166,11 +166,31 @@
                 <span>上传题目和解析后，就能按掌握状态刷题复习。</span>
               </div>
               <div v-else-if="filteredMistakes.length === 0" class="empty-note">当前筛选下没有错题。</div>
+              <div v-else class="mistake-pagination">
+                <span>{{ browseMistakePageSummary }}</span>
+                <div class="pagination-actions">
+                  <button class="secondary-btn slim" type="button" :disabled="browseMistakePage <= 1" @click="browseMistakePage = 1">首页</button>
+                  <button class="secondary-btn slim" type="button" :disabled="browseMistakePage <= 1" @click="browseMistakePage -= 1">上一页</button>
+                  <button
+                    v-for="page in browseMistakePageItems"
+                    :key="page"
+                    class="page-dot"
+                    :class="{ active: page === browseMistakePage, ellipsis: typeof page !== 'number' }"
+                    type="button"
+                    :disabled="typeof page !== 'number'"
+                    @click="browseMistakePage = page"
+                  >
+                    {{ typeof page === 'number' ? page : '...' }}
+                  </button>
+                  <button class="secondary-btn slim" type="button" :disabled="browseMistakePage >= browseMistakePageCount" @click="browseMistakePage += 1">下一页</button>
+                  <button class="secondary-btn slim" type="button" :disabled="browseMistakePage >= browseMistakePageCount" @click="browseMistakePage = browseMistakePageCount">尾页</button>
+                </div>
+              </div>
             </div>
           </div>
 </template>
 <script setup>
 import { useAppContext } from '../../composables/appContext'
 
-const { BookOpenCheck, Eye, EyeOff, Image, Pencil, Trash2, mistakes, activeMistake, showBrowseSolution, editingStatusMistakeId, browseSubjectFilterIds, browseStatusFilterKeys, solutionPreviewUrls, questionPreviewUrls, attachmentPreviewUrls, mistakeSubjectOptions, mistakeStatusOptions, filteredMistakes, editMistake, backToMistakeMenu, openChunkDetail, enlargeSavedAttachment, toggleIdInArray, statusKeyForMistake, openMistakeStatusEditor, changeMistakeStatusFromSelect, isBrowseSolutionVisible, toggleBrowseSolution, setAllBrowseSolutions, deleteMistake, renderRichText, displayFileName, formatPercent } = useAppContext()
+const { BookOpenCheck, Eye, EyeOff, Image, Pencil, Trash2, mistakes, activeMistake, showBrowseSolution, editingStatusMistakeId, browseSubjectFilterIds, browseStatusFilterKeys, browseMistakePage, browseMistakePageCount, browseMistakePageItems, browseMistakePageSummary, paginatedMistakes, solutionPreviewUrls, questionPreviewUrls, attachmentPreviewUrls, mistakeSubjectOptions, mistakeStatusOptions, filteredMistakes, editMistake, backToMistakeMenu, openChunkDetail, enlargeSavedAttachment, toggleIdInArray, statusKeyForMistake, openMistakeStatusEditor, changeMistakeStatusFromSelect, isBrowseSolutionVisible, toggleBrowseSolution, setAllBrowseSolutions, deleteMistake, renderRichText, displayFileName, formatPercent } = useAppContext()
 </script>

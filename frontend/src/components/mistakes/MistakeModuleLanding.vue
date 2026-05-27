@@ -8,8 +8,8 @@
                 @click="subjectTagCreatorOpen = !subjectTagCreatorOpen"
               >
                 <Tag :size="34" />
-                <strong>新增标签</strong>
-                <span>创建科目标签和未掌握状态，用于筛选错题和复盘归因。</span>
+                <strong>管理状态</strong>
+                <span>创建未掌握状态，用于标记错题掌握进度和复盘原因。</span>
               </button>
               <button class="mistake-module-card" type="button" @click="openMistakeModule('upload')">
                 <Upload :size="34" />
@@ -27,23 +27,7 @@
                 <span>查看、修改题目和解析，隐藏答案进行自测。</span>
               </button>
             </div>
-            <div v-if="subjectTagCreatorOpen" class="mistake-management-panel">
-              <div class="mistake-management-group">
-                <strong>科目标签</strong>
-                <form class="status-create" @submit.prevent="createSubjectTag">
-                  <input v-model="newMistakeSubjectTagName" maxlength="60" placeholder="新增科目标签，如：操作系统" />
-                  <button class="primary-btn compact" type="submit" :disabled="loading || !newMistakeSubjectTagName.trim()">新增</button>
-                </form>
-                <div class="status-list">
-                  <div v-for="tag in mistakeSubjectTags" :key="tag.id" class="status-row">
-                    <span>{{ tag.name }}</span>
-                    <button class="icon-btn mini danger" type="button" title="删除标签" @click="deleteSubjectTag(tag)">
-                      <Trash2 :size="14" />
-                    </button>
-                  </div>
-                  <div v-if="mistakeSubjectTags.length === 0" class="empty-note">创建标签后，可在上传、刷题和浏览时快速筛选错题。</div>
-                </div>
-              </div>
+            <div v-if="subjectTagCreatorOpen" class="mistake-management-panel status-only">
               <div class="mistake-management-group">
                 <strong>未掌握状态</strong>
                 <form class="status-create" @submit.prevent="createMistakeStatus">
@@ -66,5 +50,5 @@
 <script setup>
 import { useAppContext } from '../../composables/appContext'
 
-const { BookOpenCheck, Eye, Tag, Trash2, Upload, loading, mistakeStatuses, mistakeSubjectTags, newMistakeStatusName, newMistakeSubjectTagName, subjectTagCreatorOpen, openMistakeModule, createMistakeStatus, createSubjectTag, deleteSubjectTag, deleteMistakeStatus } = useAppContext()
+const { BookOpenCheck, Eye, Tag, Trash2, Upload, loading, mistakeStatuses, newMistakeStatusName, subjectTagCreatorOpen, openMistakeModule, createMistakeStatus, deleteMistakeStatus } = useAppContext()
 </script>

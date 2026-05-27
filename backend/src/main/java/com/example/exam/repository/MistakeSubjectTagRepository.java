@@ -19,6 +19,6 @@ public interface MistakeSubjectTagRepository extends JpaRepository<MistakeSubjec
 
     boolean existsByOwnerIdAndNameIgnoreCase(Long ownerId, String name);
 
-    @Query(value = "select count(*) > 0 from mistake_question_subject_tag where subject_tag_id = :tagId", nativeQuery = true)
-    boolean isUsed(@Param("tagId") Long tagId);
+    @Query(value = "select count(*) from mistake_question_subject_tag where subject_tag_id = :tagId", nativeQuery = true)
+    long countUsage(@Param("tagId") Long tagId);
 }

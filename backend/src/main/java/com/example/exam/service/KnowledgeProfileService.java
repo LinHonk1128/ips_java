@@ -553,7 +553,7 @@ public class KnowledgeProfileService {
     }
 
     private AiResult aiSummary(Long userId, String summary, List<DiagnosisItemResponse> items, List<ReviewSuggestionResponse> suggestions) {
-        var settings = aiSettingsService.get(userId);
+        var settings = aiSettingsService.effective(userId);
         if (settings.chatApiKey() == null || settings.chatApiKey().isBlank()) {
             return new AiResult(false, "");
         }

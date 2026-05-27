@@ -50,7 +50,10 @@ public class ChatService {
     private static final int DIRECT_CHAT_MAX_TOKENS = 2000;
     private static final int DEEP_CHAT_MAX_TOKENS = 2400;
     private static final int QUERY_REWRITE_MAX_TOKENS = 120;
+    private static final int MAX_HISTORY_MESSAGES = 6;
+    private static final int MAX_HISTORY_MESSAGE_CHARS = 800;
     private static final Duration CHAT_TIMEOUT = Duration.ofSeconds(90);
+    private static final Duration STREAM_TIMEOUT = CHAT_TIMEOUT.plusSeconds(90);
 
     private final KnowledgeChunkRepository chunkRepository;
     private final StudyFolderRepository folderRepository;
@@ -92,14 +95,16 @@ public class ChatService {
         );
         long settingsLoadedAt = System.nanoTime();
         boolean withCitations = useKnowledgeBase && (request.withCitations() == null || request.withCitations());
+        List<ConversationMessage> history = recentHistory(request.messages());
+        String retrievalQuestion = retrievalQuestion(request.question(), history);
         List<KnowledgeChunk> chunks = useKnowledgeBase
-                ? retrieve(folder, userId, request.question(), settings, deepAnswer(request))
+                ? retrieve(folder, userId, retrievalQuestion, settings, deepAnswer(request))
                 : List.of();
         long retrievedAt = System.nanoTime();
         initializeSourceData(chunks);
         String prompt = useKnowledgeBase
-                ? buildPrompt(request.mode(), request.question(), chunks, settings.aiRole(), settings.systemPrompt(), withCitations)
-                : buildDirectPrompt(request.mode(), request.question(), settings.aiRole(), settings.systemPrompt());
+                ? buildPrompt(request.mode(), request.question(), history, chunks, settings.aiRole(), settings.systemPrompt(), withCitations)
+                : buildDirectPrompt(request.mode(), request.question(), history, settings.aiRole(), settings.systemPrompt());
         long promptBuiltAt = System.nanoTime();
         int responseTokenLimit = responseTokenLimit(request, useKnowledgeBase);
         String answer = callModel(settings, prompt, responseTokenLimit, 0.2);
@@ -110,7 +115,7 @@ public class ChatService {
                     : localDirectAnswer(hasChatApiKey(settings));
         }
         List<Source> sources = useKnowledgeBase && withCitations
-                ? chunkInteractionService.recordCitations(userId, buildSources(chunks, request.question(), answer))
+                ? chunkInteractionService.recordCitations(userId, buildSources(chunks, retrievalQuestion, answer))
                 : List.of();
         long finishedAt = System.nanoTime();
         log.info("chat.ask timings userId={} folderId={} knowledgeBase={} deep={} citations={} chunks={} folder={}ms settings={}ms retrieve={}ms prompt={}ms model={}ms sources={}ms total={}ms",
@@ -133,7 +138,7 @@ public class ChatService {
     @Transactional(readOnly = true)
     public SseEmitter askStream(Long userId, ChatRequest request) {
         long started = System.nanoTime();
-        SseEmitter emitter = new SseEmitter(CHAT_TIMEOUT.plusSeconds(5).toMillis());
+        SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT.toMillis());
         boolean useKnowledgeBase = useKnowledgeBase(request);
         StudyFolder folder = useKnowledgeBase ? requireFolder(request.folderId(), userId) : null;
         long folderLoadedAt = System.nanoTime();
@@ -151,19 +156,27 @@ public class ChatService {
         );
         long settingsLoadedAt = System.nanoTime();
         boolean withCitations = useKnowledgeBase && (request.withCitations() == null || request.withCitations());
+        List<ConversationMessage> history = recentHistory(request.messages());
+        String retrievalQuestion = retrievalQuestion(request.question(), history);
         List<KnowledgeChunk> chunks = useKnowledgeBase
-                ? retrieve(folder, userId, request.question(), settings, deepAnswer(request))
+                ? retrieve(folder, userId, retrievalQuestion, settings, deepAnswer(request))
                 : List.of();
         long retrievedAt = System.nanoTime();
         initializeSourceData(chunks);
         String prompt = useKnowledgeBase
-                ? buildPrompt(request.mode(), request.question(), chunks, settings.aiRole(), settings.systemPrompt(), withCitations)
-                : buildDirectPrompt(request.mode(), request.question(), settings.aiRole(), settings.systemPrompt());
+                ? buildPrompt(request.mode(), request.question(), history, chunks, settings.aiRole(), settings.systemPrompt(), withCitations)
+                : buildDirectPrompt(request.mode(), request.question(), history, settings.aiRole(), settings.systemPrompt());
         long promptBuiltAt = System.nanoTime();
+        emitter.onTimeout(() -> log.warn("chat.stream timeout userId={} folderId={} timeout={}ms",
+                userId, request.folderId(), STREAM_TIMEOUT.toMillis()));
+        emitter.onError(ex -> log.warn("chat.stream emitter error userId={} folderId={}: {}",
+                userId, request.folderId(), ex.toString()));
 
         CompletableFuture.runAsync(() -> {
             try {
-                sendEvent(emitter, "ready", "ok");
+                if (!sendEvent(emitter, "ready", "ok")) {
+                    return;
+                }
                 int responseTokenLimit = responseTokenLimit(request, useKnowledgeBase);
                 String answer = callModelStream(settings, prompt, responseTokenLimit, delta -> {
                     sendEvent(emitter, "delta", delta);
@@ -173,14 +186,18 @@ public class ChatService {
                     answer = useKnowledgeBase
                             ? localAnswer(request.mode(), chunks, hasChatApiKey(settings), withCitations)
                             : localDirectAnswer(hasChatApiKey(settings));
-                    sendEvent(emitter, "delta", answer);
+                    if (!sendEvent(emitter, "delta", answer)) {
+                        return;
+                    }
                 }
                 List<Source> sources = useKnowledgeBase && withCitations
-                        ? chunkInteractionService.recordCitations(userId, buildSources(chunks, request.question(), answer))
+                        ? chunkInteractionService.recordCitations(userId, buildSources(chunks, retrievalQuestion, answer))
                         : List.of();
                 long finishedAt = System.nanoTime();
-                sendEvent(emitter, "done", new ChatResponse(answer, sources));
-                emitter.complete();
+                if (!sendEvent(emitter, "done", new ChatResponse(answer, sources))) {
+                    return;
+                }
+                completeEmitter(emitter);
                 log.info("chat.stream timings userId={} folderId={} knowledgeBase={} deep={} citations={} chunks={} folder={}ms settings={}ms retrieve={}ms prompt={}ms model={}ms sources={}ms total={}ms",
                         userId,
                         request.folderId(),
@@ -196,7 +213,10 @@ public class ChatService {
                         millisBetween(modelCalledAt, finishedAt),
                         millisBetween(started, finishedAt));
             } catch (Exception ex) {
-                emitter.completeWithError(ex);
+                log.warn("chat.stream failed userId={} folderId={}: {}", userId, request.folderId(), ex.toString());
+                if (sendEvent(emitter, "error", streamErrorMessage(ex))) {
+                    completeEmitter(emitter);
+                }
             }
         });
         return emitter;
@@ -258,7 +278,7 @@ public class ChatService {
         );
         KnowledgeChunk selected = selectTeacherChunk(scopeFolder, userId, request.requirement(), request.excludeChunkIds());
         if (selected == null) {
-            throw new IllegalArgumentException("当前知识库还没有可用于教师模式出题的知识片段");
+            throw new IllegalArgumentException("当前知识库还没有可用于定制练题的知识片段");
         }
         chunkInteractionService.recordCitation(selected);
         String prompt = buildTeacherQuestionPrompt(request.requirement(), selected);
@@ -314,7 +334,7 @@ public class ChatService {
     }
 
     private String buildTeacherQuestionPrompt(String requirement, KnowledgeChunk chunk) {
-        String requestText = requirement == null || requirement.isBlank() ? "围绕该知识片段的核心考点" : requirement.trim();
+        String requestText = requirement == null || requirement.isBlank() ? "围绕核心考点" : requirement.trim();
         return """
                 你是考研复习老师。请只依据给定知识片段中“明确写出”的信息，围绕用户的提问要求出 1 道问题。
 
@@ -322,9 +342,10 @@ public class ChatService {
                 1. 只输出 1 道题；
                 2. 问题的答案必须能直接从知识片段中找到，不允许依赖常识、教材外知识或推理补全；
                 3. 如果知识片段只是简单提到两个概念，但没有说明二者区别、联系、原因、优缺点或适用场景，不要提问“区别是什么”“为什么”“比较两者”等扩展题；
-                4. 如果资料信息较少，就出识记型或定位型问题，例如“片段中提到了哪些……”“片段如何定义……”“片段给出了哪些分类……”；
-                5. referenceAnswer 只能复述或概括知识片段中的原有信息；资料没有写出的内容必须回答“当前片段未说明”；
-                6. 只输出 JSON：{"question":"...","referenceAnswer":"..."}。
+                4. 问题要像正常练习题，直接提问考点；不要出现“知识片段”“片段中”“根据片段”“根据知识片段”“资料中”等来源提示词；
+                5. 如果资料信息较少，就出识记型或定位型问题，例如“临界区问题有哪些基本要求？”“进程是什么的基本单位？”“TCP 的可靠传输机制包括哪些内容？”；
+                6. referenceAnswer 只能复述或概括知识片段中的原有信息；资料没有写出的内容必须回答“当前资料未说明”；
+                7. 只输出 JSON：{"question":"...","referenceAnswer":"..."}。
 
                 提问要求：
                 %s
@@ -347,6 +368,7 @@ public class ChatService {
                 String question = root.path("question").asText("");
                 String referenceAnswer = root.path("referenceAnswer").asText("");
                 if (!question.isBlank()) {
+                    question = cleanTeacherQuestion(question);
                     if (needsExplicitEvidence(question) && !hasExplicitEvidence(question, chunk.getContent())) {
                         return safeTeacherQuestion(chunk);
                     }
@@ -354,6 +376,7 @@ public class ChatService {
                 }
             } catch (Exception ignored) {
                 if (!generated.isBlank()) {
+                    generated = cleanTeacherQuestion(generated);
                     if (needsExplicitEvidence(generated) && !hasExplicitEvidence(generated, chunk.getContent())) {
                         return safeTeacherQuestion(chunk);
                     }
@@ -365,7 +388,15 @@ public class ChatService {
     }
 
     private TeacherQuestionPayload safeTeacherQuestion(KnowledgeChunk chunk) {
-        return new TeacherQuestionPayload("根据当前知识片段，请概括其中明确提到的核心概念或分类。", excerpt(chunk.getContent()));
+        return new TeacherQuestionPayload("请概括其中明确提到的核心概念或分类。", excerpt(chunk.getContent()));
+    }
+
+    private String cleanTeacherQuestion(String question) {
+        return question == null ? "" : question
+                .replaceFirst("^\\s*根据(?:当前)?(?:知识)?片段[，,、：:]?\\s*", "")
+                .replaceFirst("^\\s*(?:知识)?片段中(?:提到|给出|说明|定义)了?\\s*", "")
+                .replaceFirst("^\\s*(?:这段|该段|资料中)(?:提到|给出|说明|定义)了?\\s*", "")
+                .trim();
     }
 
     private boolean needsExplicitEvidence(String question) {
@@ -750,7 +781,58 @@ public class ChatService {
         return score;
     }
 
-    private String buildDirectPrompt(QuestionMode mode, String question, String aiRole, String systemPrompt) {
+    private List<ConversationMessage> recentHistory(List<ConversationMessage> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        List<ConversationMessage> normalized = messages.stream()
+                .filter(message -> message != null
+                        && message.role() != null
+                        && message.content() != null
+                        && !message.content().isBlank())
+                .map(message -> new ConversationMessage(normalizeHistoryRole(message.role()), limitHistoryContent(message.content())))
+                .filter(message -> "user".equals(message.role()) || "assistant".equals(message.role()))
+                .toList();
+        if (normalized.size() <= MAX_HISTORY_MESSAGES) {
+            return normalized;
+        }
+        return normalized.subList(normalized.size() - MAX_HISTORY_MESSAGES, normalized.size());
+    }
+
+    private String normalizeHistoryRole(String role) {
+        return "assistant".equalsIgnoreCase(role) ? "assistant" : "user";
+    }
+
+    private String limitHistoryContent(String content) {
+        String normalized = content.replaceAll("\\s+", " ").trim();
+        return normalized.length() > MAX_HISTORY_MESSAGE_CHARS
+                ? normalized.substring(0, MAX_HISTORY_MESSAGE_CHARS) + "..."
+                : normalized;
+    }
+
+    private String retrievalQuestion(String question, List<ConversationMessage> history) {
+        List<String> recentUserQuestions = history.stream()
+                .filter(message -> "user".equals(message.role()))
+                .map(ConversationMessage::content)
+                .toList();
+        if (recentUserQuestions.size() > 3) {
+            recentUserQuestions = recentUserQuestions.subList(recentUserQuestions.size() - 3, recentUserQuestions.size());
+        }
+        String combined = (String.join(" ", recentUserQuestions) + " " + (question == null ? "" : question)).trim();
+        return combined.length() > 1000 ? combined.substring(combined.length() - 1000) : combined;
+    }
+
+    private String conversationContext(List<ConversationMessage> history) {
+        if (history == null || history.isEmpty()) {
+            return "无";
+        }
+        return history.stream()
+                .map(message -> ("assistant".equals(message.role()) ? "助手" : "用户") + "：" + message.content())
+                .collect(java.util.stream.Collectors.joining("\n"));
+    }
+
+    private String buildDirectPrompt(QuestionMode mode, String question, List<ConversationMessage> history, String aiRole, String systemPrompt) {
+        String conversationContext = conversationContext(history);
         String role = aiRole == null || aiRole.isBlank() ? "严谨的考研答疑老师" : aiRole.trim();
         String customInstruction = systemPrompt == null || systemPrompt.isBlank()
                 ? "回答要清晰、分点、有结论；不确定时说明不确定，不要编造。"
@@ -766,9 +848,12 @@ public class ChatService {
                     用户已选择不引用知识库。请直接作为考研复习老师和用户互动：可以解释概念、追问薄弱点，或围绕用户输入提出 1 个循序渐进的问题。
                     不要输出资料引用编号。
 
+                    最近对话（用于理解追问）：
+                    %s
+
                     用户输入：
                     %s
-                    """.formatted(role, customInstruction, question);
+                    """.formatted(role, customInstruction, conversationContext, question);
         }
         return """
                 角色：
@@ -780,16 +865,20 @@ public class ChatService {
                 用户已选择不引用知识库。请直接基于你的通用能力回答用户问题，用简体中文，结构清晰；如果不确定，请明确说明不确定。
                 不要输出资料引用编号。
 
+                最近对话（用于理解追问）：
+                %s
+
                 用户问题：
                 %s
-                """.formatted(role, customInstruction, question);
+                """.formatted(role, customInstruction, conversationContext, question);
     }
 
-    private String buildPrompt(QuestionMode mode, String question, List<KnowledgeChunk> chunks, String aiRole, String systemPrompt, boolean withCitations) {
+    private String buildPrompt(QuestionMode mode, String question, List<ConversationMessage> history, List<KnowledgeChunk> chunks, String aiRole, String systemPrompt, boolean withCitations) {
         String context = numberedContext(chunks);
+        String conversationContext = conversationContext(history);
         String role = aiRole == null || aiRole.isBlank() ? "严谨的考研答疑老师" : aiRole.trim();
         String customInstruction = systemPrompt == null || systemPrompt.isBlank()
-                ? "优先依据当前知识库回答；给出可追溯依据；如果资料不足，明确说明无法从知识库确认。"
+                ? AiSettingsService.DEFAULT_SYSTEM_PROMPT
                 : systemPrompt.trim();
         if (!withCitations) {
             if (mode == QuestionMode.TEACHER) {
@@ -802,13 +891,17 @@ public class ChatService {
 
                         你正在进行考研复习抽问。请只依据下方知识库内容，用简体中文向用户提出 1 个循序渐进的问题。
                         回答中不要输出引用编号或来源标记。如果知识库不足以出题，请直接说明“当前知识库资料不足，无法确认出题依据”，不要编造。
+                        最近对话只用于理解追问指代，不作为事实依据。
+
+                        最近对话：
+                        %s
 
                         知识库：
                         %s
 
                         用户输入：
                         %s
-                        """.formatted(role, customInstruction, context, question);
+                        """.formatted(role, customInstruction, conversationContext, context, question);
             }
             return """
                     角色：
@@ -819,14 +912,21 @@ public class ChatService {
 
                     你是考研知识库答疑助手。请只依据下方知识库内容，用简体中文回答用户问题。
                     回答要清晰、分点、有结论，但不要输出引用编号、来源标记或文末参考列表。
+                    如果知识库内容高度相关，请基于资料解释，可以改写、举例或梳理逻辑，但不要加入资料无法支持的结论。
+                    如果知识库只提供部分依据，请先说明“根据当前资料可以确定的是……”，再讲清楚可确认内容。
+                    如需补充通用知识，请单独标明“补充理解”，并避免把补充内容说成资料原文依据。
                     如果知识库里没有足够依据，请明确说“无法从当前知识库确认”，不要用常识或猜测补全。
+                    最近对话只用于理解追问指代，不作为事实依据。
+
+                    最近对话：
+                    %s
 
                     知识库：
                     %s
 
                     用户问题：
                     %s
-                    """.formatted(role, customInstruction, context, question);
+                    """.formatted(role, customInstruction, conversationContext, context, question);
         }
         if (mode == QuestionMode.TEACHER) {
             return """
@@ -840,13 +940,17 @@ public class ChatService {
                     每个关键判断后必须紧跟对应资料编号，例如：[1] 或 [2]。不要把引用集中放在末尾。
                     如果下方有多个资料片段或多个文件支持不同要点，必须优先使用不同编号交叉佐证，不要整段只引用同一个编号。
                     如果知识库不足以出题，请直接说明“当前知识库资料不足，无法确认出题依据”，不要编造。
+                    最近对话只用于理解追问指代，不作为事实依据。
+
+                    最近对话：
+                    %s
 
                     知识库：
                     %s
 
                     用户输入：
                     %s
-                    """.formatted(role, customInstruction, context, question);
+                    """.formatted(role, customInstruction, conversationContext, context, question);
         }
         return """
                 角色：
@@ -859,14 +963,21 @@ public class ChatService {
                 回答要清晰、分点、有结论。每个定义、分类、结论或例子后必须紧跟对应资料编号，例如：[1] 或 [2]。
                 不要把引用集中放在回答末尾；引用必须贴在它支持的句子或条目后面。
                 如果多个资料片段或多个文件分别支持不同要点，必须在对应句子后使用不同编号交叉引用；不要整篇回答只使用同一个编号。
+                如果知识库内容高度相关，请基于资料解释，可以改写、举例或梳理逻辑，但不要加入资料无法支持的结论。
+                如果知识库只提供部分依据，请先说明“根据当前资料可以确定的是……”，再讲清楚可确认内容。
+                如需补充通用知识，请单独标明“补充理解”，并避免把补充内容说成资料原文依据。
                 如果知识库里没有足够依据，请明确说“无法从当前知识库确认”，不要用常识或猜测补全。
+                最近对话只用于理解追问指代，不作为事实依据。
+
+                最近对话：
+                %s
 
                 知识库：
                 %s
 
                 用户问题：
                 %s
-                """.formatted(role, customInstruction, context, question);
+                """.formatted(role, customInstruction, conversationContext, context, question);
     }
 
     private String numberedContext(List<KnowledgeChunk> chunks) {
@@ -979,12 +1090,28 @@ public class ChatService {
         }
     }
 
-    private void sendEvent(SseEmitter emitter, String name, Object data) {
+    private boolean sendEvent(SseEmitter emitter, String name, Object data) {
         try {
             emitter.send(SseEmitter.event().name(name).data(data));
+            return true;
         } catch (Exception ex) {
-            throw new IllegalStateException("Failed to send chat stream event", ex);
+            log.debug("Failed to send chat stream event '{}': {}", name, ex.toString());
+            return false;
         }
+    }
+
+    private void completeEmitter(SseEmitter emitter) {
+        try {
+            emitter.complete();
+        } catch (Exception ignored) {
+        }
+    }
+
+    private String streamErrorMessage(Exception ex) {
+        String message = ex.getMessage();
+        return message == null || message.isBlank()
+                ? "问答生成失败，请稍后重试"
+                : message;
     }
 
     private String normalizeChatCompletionsEndpoint(String endpoint) {
@@ -1020,7 +1147,7 @@ public class ChatService {
                 : "";
         String citation = withCitations ? " [1]" : "";
         if (mode == QuestionMode.TEACHER) {
-            return prefix + "教师模式建议先围绕这段资料追问：请你先解释其中的核心概念，再说明它常见的考法。" + citation + "\n\n依据：" + first;
+            return prefix + "定制练题建议先围绕这段资料作答：请你先解释其中的核心概念，再说明它常见的考法。" + citation + "\n\n依据：" + first;
         }
         List<String> lines = new ArrayList<>();
         if (!prefix.isBlank()) {

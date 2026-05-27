@@ -1,9 +1,9 @@
 <template>
 <section class="auth-panel" aria-label="登录">
       <div class="auth-copy">
-        <div class="brand-mark">研</div>
+        <img class="brand-mark" :src="brandLogo" alt="智能考研系统标识" />
         <h1>智能考研系统</h1>
-        <p>整理教材、资料和笔记，构建自己的科目知识库，再用大模型做答疑和教师式追问。</p>
+        <p>私有知识库驱动答疑、练题、复盘。</p>
       </div>
       <form class="auth-card" @submit.prevent="submitAuth">
         <div class="segmented">
@@ -31,6 +31,7 @@
     </section>
 </template>
 <script setup>
+import brandLogo from '../assets/brand-logo.svg'
 import { useAppContext } from '../composables/appContext'
 
 const { LogIn, authMode, authForm, loading, error, submitAuth } = useAppContext()

@@ -119,7 +119,7 @@
                 <span>{{ suggestion.fileName }} · 第 {{ suggestion.pageNumber || 1 }} 页</span>
               </div>
               <div class="recommendation-actions">
-                <button class="secondary-btn slim" type="button" @click="openTeacherForSuggestion(suggestion)">进入教师模式</button>
+                <button class="secondary-btn slim" type="button" @click="openTeacherForSuggestion(suggestion)">进入定制练题</button>
                 <button class="primary-btn compact" type="button" :disabled="loading" @click="addSuggestionToPlan(suggestion)">
                   <CalendarPlus :size="16" />
                   加入计划
@@ -182,7 +182,7 @@
             <section class="profile-block wide">
               <h3>薄弱知识点</h3>
               <article
-                v-for="chunk in profileWeakChunks"
+                v-for="chunk in paginatedProfileWeakChunks"
                 :key="chunk.chunkId"
                 class="weak-chunk-row"
                 tabindex="0"
@@ -201,10 +201,30 @@
                   <span>最近练习 {{ formatDateTime(chunk.lastPracticedAt) }}</span>
                   <span>错 {{ chunk.wrongHitCount }} / 对 {{ chunk.correctHitCount }}</span>
                   <button class="secondary-btn slim" type="button" @click.stop="openWeakChunkInEditor(chunk)">打开原文</button>
-                  <button class="secondary-btn slim" type="button" @click.stop="openTeacherForWeakChunk(chunk)">进入教师模式</button>
+                  <button class="secondary-btn slim" type="button" @click.stop="openTeacherForWeakChunk(chunk)">进入定制练题</button>
                 </div>
               </article>
               <div v-if="profileWeakChunks.length === 0" class="empty-note">暂无已反馈的薄弱知识点。</div>
+              <div v-else class="profile-pagination">
+                <span>{{ profileWeakChunkPageSummary }}</span>
+                <div class="pagination-actions">
+                  <button class="secondary-btn slim" type="button" :disabled="profileWeakChunkPage <= 1" @click="profileWeakChunkPage = 1">首页</button>
+                  <button class="secondary-btn slim" type="button" :disabled="profileWeakChunkPage <= 1" @click="profileWeakChunkPage -= 1">上一页</button>
+                  <button
+                    v-for="page in profileWeakChunkPageItems"
+                    :key="page"
+                    class="page-dot"
+                    :class="{ active: page === profileWeakChunkPage, ellipsis: typeof page !== 'number' }"
+                    type="button"
+                    :disabled="typeof page !== 'number'"
+                    @click="profileWeakChunkPage = page"
+                  >
+                    {{ typeof page === 'number' ? page : '...' }}
+                  </button>
+                  <button class="secondary-btn slim" type="button" :disabled="profileWeakChunkPage >= profileWeakChunkPageCount" @click="profileWeakChunkPage += 1">下一页</button>
+                  <button class="secondary-btn slim" type="button" :disabled="profileWeakChunkPage >= profileWeakChunkPageCount" @click="profileWeakChunkPage = profileWeakChunkPageCount">尾页</button>
+                </div>
+              </div>
             </section>
           </div>
         </section>
@@ -212,5 +232,5 @@
 <script setup>
 import { useAppContext } from '../composables/appContext'
 
-const { BookOpenCheck, CalendarPlus, LoaderCircle, RefreshCw, loading, profileSubjects, profileWeakChunks, profileTrendDays, profilePressureSubjectId, profileLoading, profileDiagnosisLoading, profileSubjectChartRef, profileDistributionChartRef, profileTrendChartRef, profileHeatmapChartRef, profilePressureChartRef, profileMetricCards, profileDiagnosisMessage, profileDiagnosisInsufficient, profileDiagnosisItems, profileSuggestions, displayFileName, formatPercent, subjectProgressDegrees, subjectAccent, confidenceLabel, formatDateTime, openTeacherForWeakChunk, openWeakChunkInEditor, loadKnowledgeProfile, refreshProfileDiagnosis, refreshProfileRecommendations, changeProfilePressureSubject, changeProfileTrendDays, openTeacherForSuggestion, addSuggestionToPlan } = useAppContext()
+const { BookOpenCheck, CalendarPlus, LoaderCircle, RefreshCw, loading, profileSubjects, profileWeakChunks, profileWeakChunkPage, profileWeakChunkPageCount, profileWeakChunkPageItems, profileWeakChunkPageSummary, paginatedProfileWeakChunks, profileTrendDays, profilePressureSubjectId, profileLoading, profileDiagnosisLoading, profileSubjectChartRef, profileDistributionChartRef, profileTrendChartRef, profileHeatmapChartRef, profilePressureChartRef, profileMetricCards, profileDiagnosisMessage, profileDiagnosisInsufficient, profileDiagnosisItems, profileSuggestions, displayFileName, formatPercent, subjectProgressDegrees, subjectAccent, confidenceLabel, formatDateTime, openTeacherForWeakChunk, openWeakChunkInEditor, loadKnowledgeProfile, refreshProfileDiagnosis, refreshProfileRecommendations, changeProfilePressureSubject, changeProfileTrendDays, openTeacherForSuggestion, addSuggestionToPlan } = useAppContext()
 </script>

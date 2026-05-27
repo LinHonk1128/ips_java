@@ -10,7 +10,7 @@
               <button class="mistake-module-card" type="button" @click="openKnowledgeModule('chat')">
                 <MessageSquare :size="34" />
                 <strong>知识问答</strong>
-                <span>选择文件夹作为知识范围，进行资料溯源答疑或教师式追问。</span>
+                <span>选择文件夹作为知识范围，进行资料溯源答疑或定制练题。</span>
               </button>
               <button class="mistake-module-card" type="button" @click="openKnowledgeModule('editor')">
                 <ScanText :size="34" />

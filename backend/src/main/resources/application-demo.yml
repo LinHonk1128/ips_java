@@ -1,0 +1,3 @@
+app:
+  demo-data:
+    enabled: true

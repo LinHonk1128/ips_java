@@ -11,6 +11,7 @@ public class ChatDtos {
             Long folderId,
             @NotNull QuestionMode mode,
             @NotBlank String question,
+            List<ConversationMessage> messages,
             String model,
             String apiKey,
             String endpoint,

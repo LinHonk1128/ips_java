@@ -1,28 +1,30 @@
 # 知识问答全过程说明
 
-本文档整理本次对知识问答模块的改造内容，并说明系统从资料上传、知识库构建、问题检索到大模型生成答案的完整流程。
+本文档说明当前项目中知识库问答的完整链路，包括资料上传、文本抽取、语义切片、检索召回、规则 rerank、Prompt 构造、大模型调用、来源引用和学习画像回写。
 
 ## 一、总体方案
 
-本项目的知识问答采用“混合检索增强生成”方案，也就是轻量级 RAG。
+本项目的知识问答采用“混合检索增强生成”（RAG）方案。系统不会直接把用户问题交给大模型自由回答，而是先在当前文件夹及其子文件夹范围内检索相关 `KnowledgeChunk`，再把候选片段作为上下文交给大模型生成答案。
 
-系统不会直接把用户问题交给大模型自由回答，而是先从当前文件夹知识库中检索相关资料片段，再把检索结果作为上下文交给大模型生成答案。这样可以让回答尽量依据用户上传的资料，并支持返回来源引用。
+当前问答模块支持三类路径：
 
-本次改造后，系统支持三种问答路径：
+1. 答疑助手：默认使用知识库，检索资料片段后生成可追溯回答。
+2. 深度回答：在普通检索外增加一轮模型查询改写和补充检索，适合综合题、比较题和口语化问题。
+3. 直接聊天：用户关闭“使用知识库”后跳过资料检索，直接调用聊天模型，不返回来源引用。
 
-1. 快速知识库问答：默认模式，检索知识库后生成答案。
-2. 深度回答：用户手动开启，会额外进行一轮查询改写和补充检索，提高复杂问题的召回效果。
-3. 直接聊天：用户关闭“使用知识库”后，不检索资料，直接与大模型对话。
+定制练题由独立接口 `/api/chat/teacher/question` 提供。它固定使用知识库和来源追溯，每次围绕一个被选中的知识片段生成练习问题，并把反馈结果回写到知识片段统计中。
 
 ## 二、前端交互流程
 
-知识问答页面新增三个控制项：
+知识问答页面位于 `frontend/src/views/ChatView.vue`，共享状态与主要动作在 `frontend/src/composables/useSmartExamApp.js` 中维护，接口封装位于 `frontend/src/api/client.js`。
 
-- 使用知识库：默认开启。开启时，问题会进入知识库检索流程；关闭时，直接调用大模型聊天。
-- 引用来源：默认开启。开启时，答案中的 `[1]`、`[2]` 等编号可以点击查看来源片段。
-- 深度回答：默认关闭。开启后，系统会多做一次查询改写和补充检索。
+答疑助手下，页面提供三个控制项：
 
-前端发送问题时，会把这些参数一起传给后端：
+- 使用知识库：默认开启。开启时需要选择文件夹；关闭后允许不选文件夹直接聊天。
+- 引用来源：默认开启。开启时，答案中的 `[1]`、`[2]` 等编号会渲染为可点击来源按钮。
+- 深度回答：默认关闭。开启后，后端会额外做查询改写和第二轮检索。
+
+前端发送普通问答时，会合并 AI 设置、当前表单和当前文件夹 ID：
 
 ```json
 {
@@ -32,90 +34,72 @@
   "useKnowledgeBase": true,
   "withCitations": true,
   "deepAnswer": false,
-  "chatModel": "deepseek-v4-flash",
+  "chatModel": "deepseek-chat",
   "chatEndpoint": "...",
   "chatApiKey": "...",
   "embeddingModel": "...",
   "embeddingEndpoint": "...",
-  "embeddingApiKey": "..."
+  "embeddingApiKey": "...",
+  "embeddingDimensions": 1536
 }
 ```
 
-对应代码：
-
-- `frontend/src/App.vue`
-- `backend/src/main/java/com/example/exam/dto/ChatDtos.java`
+流式接口优先使用 `/api/chat/stream`。如果流式请求失败且尚未收到有效增量内容，前端会回退到普通 `/api/chat`。
 
 ## 三、资料上传与知识库构建
 
-### 1. 文件上传
+### 1. 文件上传与文本抽取
 
-用户在“上传编辑”页面上传 PDF、Word、图片、文本等资料。
+用户在上传编辑页上传 PDF、Word、图片、文本或 Markdown 资料。后端 `FileService.upload()` 保存原始文件到本地上传目录，调用 `TextExtractionService.extract()` 抽取文本，并保存 `StudyFile`。
 
-后端接收文件后，会保存到本地上传目录，并记录文件信息，例如：
+文本抽取方式：
 
-- 文件名
-- 文件类型
-- 所属文件夹
-- 上传时间
-- 是否加入知识库
+- PDF：使用 PDFBox。
+- Word：使用 Apache POI。
+- 图片：调用本机 Tesseract OCR。
+- 文本、Markdown、HTML：直接读取或转为可检索文本。
 
-对应代码：
-
-- `FileService.upload()`
-
-### 2. 文本抽取
-
-上传后，系统会从文件中抽取正文：
-
-- PDF 使用 PDF 解析。
-- Word 使用 Apache POI。
-- 图片使用本地 Tesseract OCR。
-- 文本和 Markdown 直接读取内容。
-
-抽取出的文本会显示在前端编辑器中，用户可以手动校正。
+当前实现中，如果自动抽取结果是占位错误文本，上传接口会删除刚保存的文件并抛出异常，避免无效占位内容直接进入知识库。抽取成功后文件默认 `knowledgeEnabled = true`，随后立即重建知识片段。
 
 对应代码：
 
-- `TextExtractionService`
+- `backend/src/main/java/com/example/exam/service/FileService.java`
+- `backend/src/main/java/com/example/exam/service/TextExtractionService.java`
 
-### 3. 切分知识片段
+### 2. 语义切片
 
-当文件保存为知识库后，系统会把正文切分为多个 `KnowledgeChunk`。
+当前切片方案已经升级为 `chunkingVersion = 2`，不再使用固定 `800` 字符窗口和 `120` 字符重叠。
 
-当前切分策略：
+`FileService.rebuildKnowledge()` 的实际策略是：
 
-- 每段约 `800` 字符。
-- 相邻片段重叠 `120` 字符。
-- 根据文本位置计算页码。
-- 每个片段保存所属文件、所属文件夹、片段序号和内容。
+- 先把 HTML 转为可检索文本，清理脚本、样式和多余空白。
+- 按行、标题、句子和软分隔符拆成 `TextUnit`。
+- 标题、段落开头、自然停顿和新话题词会影响切片边界。
+- 目标长度约 `800` 字符，最小有效尾段约 `300` 字符，最大约 `1100` 字符。
+- 重叠策略为“上一片段末尾的 1 个非标题句子”，而不是固定字符数。
+- 页码按文本偏移估算，当前约每 `3500` 字符折算一页。
+- 片段保存 `file`、`folder`、`chunkIndex`、`pageNumber`、`chunkingVersion` 和 `content`。
 
-这样做的目的是避免一次性把整篇资料放进大模型，同时保证检索时可以定位到较小的知识单元。
+应用启动后，`backfillKnowledgeForExistingFiles()` 会检查已开启知识库的历史文件；如果片段为空、页码需要修复，或 `chunkingVersion` 低于当前版本，会自动重建。
 
 对应代码：
 
 - `FileService.rebuildKnowledge()`
+- `FileService.splitIntoSemanticChunks()`
 - `KnowledgeChunk`
+- `docs/09-semantic-chunking-design.md`
 
 ## 四、异步 Embedding 与 Elasticsearch 索引
 
-本次方案要求“上传资料时异步生成 embedding，不阻塞用户操作”。项目原有实现已经满足这一点，本次保留并配合新的检索流程使用。
-
-当知识片段生成后，系统会调用：
+知识片段写入数据库后，系统调用：
 
 ```java
 elasticsearchService.reindexFile(userId, file, chunks, aiSettingsService.get(userId));
 ```
 
-`reindexFile()` 内部通过 `CompletableFuture.runAsync()` 异步执行索引构建。
+`ElasticsearchService.reindexFile()` 会先复制文件和片段快照，再用 `CompletableFuture.runAsync()` 异步执行索引重建。因此上传、编辑或移入知识库的接口不需要等待 embedding 和 Elasticsearch 写入完成。
 
-也就是说：
-
-- 用户上传或保存资料后，接口可以先返回。
-- 后台再慢慢生成 embedding 并写入 Elasticsearch。
-- 即使 Elasticsearch 或 embedding 服务暂时不可用，数据库里的知识片段仍然是主数据，不会丢失。
-
-每个 Elasticsearch 文档包含：
+Elasticsearch 文档字段包括：
 
 - `chunkId`
 - `fileId`
@@ -127,387 +111,306 @@ elasticsearchService.reindexFile(userId, file, chunks, aiSettingsService.get(use
 - `uploadedAt`
 - `embedding`
 
-其中 `embedding` 是 `dense_vector` 类型，使用余弦相似度。
+`embedding` 使用 `dense_vector`，维度来自用户设置；未配置时使用系统默认维度。embedding 生成失败或未配置 API Key 时，文档仍可通过关键词检索参与召回。
 
 对应代码：
 
 - `ElasticsearchService.reindexFile()`
-- `ElasticsearchService.reindexFileNow()`
+- `ElasticsearchService.ensureIndex()`
 - `EmbeddingService.embed()`
 
-## 五、提问后的检索流程
+## 五、提问后的后端流程
 
-当用户发送问题时，后端首先判断是否使用知识库。
+普通问答入口：
 
-### 情况一：使用知识库
+- `ChatController.ask()` -> `ChatService.ask()`
+- `ChatController.askStream()` -> `ChatService.askStream()`
 
-如果 `useKnowledgeBase = true`，后端会进入 RAG 流程：
+后端先判断 `useKnowledgeBase`。该字段为空时默认视为开启。
 
-1. 校验当前文件夹是否存在且属于当前用户。
-2. 读取用户模型配置。
-3. 确定检索范围为当前文件夹及其子文件夹。
-4. 执行混合检索。
-5. 对候选片段进行轻量 rerank。
-6. 选出最终片段构造 prompt。
-7. 调用大模型生成答案。
-8. 返回答案和来源片段。
+### 1. 使用知识库
 
-对应入口：
+当 `useKnowledgeBase = true` 时：
 
-- `ChatService.ask()`
-- `ChatService.askStream()`
+1. 校验 `folderId` 存在且属于当前用户。
+2. 合并用户保存的 AI 设置和本次请求覆盖项。
+3. 确定检索范围为当前文件夹及其所有子文件夹。
+4. 调用 Elasticsearch 混合检索。
+5. 若开启深度回答，调用聊天模型改写查询并执行第二轮检索。
+6. 合并候选片段，最多保留 `20` 个候选。
+7. 执行规则 rerank 和多样性控制，最终最多选出 `5` 个片段。
+8. 构造知识库 Prompt，调用模型或流式模型。
+9. 如果模型无返回，回退成本地检索摘要。
+10. 开启引用时构造来源列表，并记录引用事件。
 
-### 情况二：不使用知识库
+### 2. 不使用知识库
 
-如果 `useKnowledgeBase = false`，后端会跳过文件夹校验和知识库检索，直接构造普通聊天 prompt。
+当 `useKnowledgeBase = false` 时：
 
-这种模式适合：
+1. 不校验文件夹。
+2. 不执行检索。
+3. 构造直接聊天 Prompt。
+4. 调用聊天模型。
+5. 不返回来源引用。
 
-- 用户想问通用问题。
-- 用户不希望回答受当前资料限制。
-- 当前没有选择文件夹，但已经配置了大模型 API。
-
-注意：关闭知识库后，系统不会返回来源引用，也无法使用本地检索兜底回答。
-
-对应代码：
-
-- `ChatService.buildDirectPrompt()`
-- `ChatService.localDirectAnswer()`
+如果没有配置聊天模型 API Key，系统会提示用户配置模型服务或重新开启知识库。因为此时没有检索片段，无法使用本地知识库摘要兜底。
 
 ## 六、混合检索机制
 
-系统的检索由 Elasticsearch 完成，采用关键词检索和向量检索结合的方式。
+`ElasticsearchService.hybridSearch()` 同时尝试关键词检索和向量检索：
 
-### 1. 关键词检索
+- 关键词检索使用 `multi_match`，字段为 `content^3` 和 `fileName`。
+- 向量检索在 embedding 可用时使用 Elasticsearch `knn`。
+- 两路召回各取 `20` 个候选。
+- 使用 RRF（Reciprocal Rank Fusion）融合排序，最终返回最多 `20` 个 chunk ID。
 
-关键词检索使用 Elasticsearch 的 `multi_match`：
-
-- `content` 字段权重更高。
-- `fileName` 也参与匹配。
-- 适合精确术语、教材名、章节名、定义类问题。
+如果 Elasticsearch 未启用、请求失败或短时间内被标记为不可用，`ChatService.retrieve()` 会回退到数据库片段本地评分：读取范围内所有可用 `KnowledgeChunk`，按问题关键词命中分数排序，再进入同一套 rerank 和多样性控制。
 
 对应代码：
 
+- `ElasticsearchService.hybridSearch()`
 - `ElasticsearchService.keywordSearch()`
-
-### 2. 向量检索
-
-如果用户配置了 embedding API Key，系统会先把用户问题转成向量，再通过 Elasticsearch `knn` 检索相似片段。
-
-向量检索适合：
-
-- 用户问题和资料表述不完全一致。
-- 用户使用口语化表达。
-- 需要语义相似而不是字面匹配。
-
-对应代码：
-
-- `EmbeddingService.embed()`
 - `ElasticsearchService.vectorSearch()`
-
-### 3. RRF 融合排序
-
-关键词检索和向量检索会分别返回候选片段。系统使用 RRF（Reciprocal Rank Fusion）进行融合。
-
-RRF 的作用是：
-
-- 避免只依赖关键词或只依赖向量。
-- 如果某个片段在两种检索中排名都靠前，它会获得更高分。
-- 对不同检索方式的分数尺度不敏感。
-
-本次修改把 Elasticsearch 融合后的返回数量提升到 `20` 条，为后续 rerank 提供更多候选。
-
-对应代码：
-
 - `ElasticsearchService.reciprocalRankFusion()`
+- `ChatService.retrieve()`
 
-## 七、轻量 Rerank 机制
+## 七、规则 Rerank 与多样性控制
 
-本次新增了规则 rerank，用于从召回的 `20` 条候选中选出更适合放进 prompt 的片段。
+召回阶段可以拿更多候选，但最终进入 Prompt 的片段需要控制数量。当前常量为：
 
-规则 rerank 会综合考虑：
+- `MAX_RERANK_CANDIDATES = 20`
+- `MAX_RETRIEVED_CHUNKS = 5`
+- `MAX_INITIAL_CHUNKS_PER_FILE = 2`
 
-- 片段中是否包含问题关键词。
-- 命中词在片段中出现的位置。
-- 文件名是否命中关键词。
-- Elasticsearch 原始排名。
-- 片段长度是否足够承载完整信息。
+规则 rerank 会综合：
 
-最终会选出最多 `5` 个片段进入大模型上下文。
+- 问题关键词在片段内容中的命中情况。
+- 命中词在内容中出现的位置，越靠前加分越多。
+- 文件名是否命中较长关键词。
+- 原始召回排名。
+- 片段长度是否足以承载完整信息。
 
-这样做的原因是：
+多样性控制分三步：
 
-- 召回阶段可以尽量多拿候选，避免漏掉相关资料。
-- 生成阶段不能无限塞上下文，需要控制 prompt 长度。
-- 通过 rerank 可以让进入 prompt 的片段更相关。
+1. 优先从不同文件各选一个片段。
+2. 数量不足时允许同一文件最多先选 `2` 个片段。
+3. 仍不足时按 rerank 顺序补齐。
 
 对应代码：
 
-- `ChatService.retrieve()`
 - `ChatService.rerankAndDiversify()`
 - `ChatService.rerankScore()`
 - `ChatService.diversifyChunks()`
 
-## 八、片段多样性控制
+## 八、深度回答流程
 
-系统不会简单地取 rerank 后的前 5 条，而是会做片段多样性控制。
+深度回答由 `deepAnswer = true` 开启，仅在使用知识库时生效。
 
-选择策略：
+流程：
 
-1. 优先从不同文件中各取一个片段。
-2. 如果数量不足，再允许同一文件取多个片段。
-3. 每个文件初始最多取 `2` 个片段。
+1. 使用原问题执行第一轮混合检索。
+2. 调用聊天模型生成一条适合检索的查询语句。
+3. 清理改写结果中的编号、引号和多余空白。
+4. 如果改写查询与原问题不同，执行第二轮混合检索。
+5. 合并两轮候选，去重并保留前 `20` 个。
+6. 用“原问题 + 改写查询”共同参与 rerank。
+7. 最终选出最多 `5` 个片段生成回答。
 
-这样可以避免答案完全依赖单一文件，也有利于多资料交叉引用。
-
-对应代码：
-
-- `ChatService.diversifyChunks()`
-
-## 九、深度回答流程
-
-“深度回答”是可选模式，默认关闭。
-
-开启后，系统会多做一轮检索：
-
-1. 先用用户原问题执行一次混合检索。
-2. 调用大模型生成一条更适合检索的查询语句。
-3. 使用改写后的查询再执行一次混合检索。
-4. 合并两轮候选片段。
-5. 再执行规则 rerank。
-6. 选出最终 `5` 个片段生成回答。
-
-查询改写 prompt 的目标是保留关键概念、同义表达和教材术语，而不是回答问题。
-
-深度回答的优点：
-
-- 更适合综合题、比较题、跨章节问题。
-- 能提高口语化问题的召回率。
-- 对资料表述和用户提问不一致的情况更友好。
-
-深度回答的代价：
-
-- 会额外调用一次聊天模型。
-- 会额外执行一次检索。
-- 响应时间会比普通模式更长。
+查询改写的输出上限为 `120` tokens，目标是提升召回，而不是提前回答问题。
 
 对应代码：
 
 - `ChatService.buildDeepSearchQuery()`
 - `ChatService.mergeCandidates()`
 
-## 十、Prompt 构造方式
+## 九、Prompt 构造方式
 
 ### 1. 使用知识库时
 
-系统会把最终选出的片段编号后拼入 prompt。
+系统把最终片段编号后拼入 Prompt：
 
-prompt 中会要求模型：
+```text
+资料片段 [1]
+文件：xxx.pdf
+页码：第 2 页
+内容：
+...
+```
 
-- 只依据知识库内容回答。
-- 如果资料不足，要说明无法从当前知识库确认。
-- 开启引用时，每个关键结论后要带上 `[1]`、`[2]` 这类来源编号。
-- 不要把所有引用集中放在末尾。
+开启引用时，Prompt 要求模型在每个定义、分类、结论或例子后紧跟 `[1]`、`[2]` 等来源编号，不把引用集中堆在末尾。关闭引用时，Prompt 仍要求只依据知识库回答，但明确不要输出引用编号或文末参考列表。
+
+### 2. 不使用知识库时
+
+直接聊天 Prompt 会说明用户已选择不引用知识库，要求模型直接基于通用能力回答，不输出资料引用编号，不确定时明确说明。
 
 对应代码：
 
 - `ChatService.buildPrompt()`
+- `ChatService.buildDirectPrompt()`
 - `ChatService.numberedContext()`
 
-### 2. 不使用知识库时
+## 十、大模型调用与输出长度
 
-系统会构造普通聊天 prompt。
+系统兼容 OpenAI Chat Completions 风格接口。Endpoint 会自动规整：
 
-prompt 中会明确说明：
+- 以 `/chat/completions` 结尾时直接使用。
+- 以 `/v1` 或 `/compatible-mode/v1` 结尾时自动追加 `/chat/completions`。
+- 未填写时默认使用 `https://api.openai.com/v1/chat/completions`。
 
-- 用户已选择不引用知识库。
-- 直接基于大模型通用能力回答。
-- 不输出资料引用编号。
-- 不确定时要说明不确定。
-
-对应代码：
-
-- `ChatService.buildDirectPrompt()`
-
-## 十一、大模型调用与流式输出
-
-系统支持两种回答方式：
-
-1. 普通 HTTP 调用：`/api/chat`
-2. SSE 流式调用：`/api/chat/stream`
-
-前端优先使用流式接口。流式调用时，后端会边接收模型输出，边通过 SSE 把增量内容推给前端。
-
-前端如果流式调用失败，会回退到普通接口。
-
-对应代码：
-
-- `ChatService.callModel()`
-- `ChatService.callModelStream()`
-- `ChatController.ask()`
-- `ChatController.askStream()`
-- `frontend/src/api/client.js`
-- `frontend/src/App.vue`
-
-## 十二、回答长度修复
-
-在测试中发现，知识问答有时会回答不全。例如答案正在列举知识点时突然停在一个孤立的 `*`。
-
-原因是原先模型调用参数：
-
-```json
-{
-  "max_tokens": 600
-}
-```
-
-这个输出上限偏小，模型回答稍微详细一些就可能被截断。
-
-本次修复后：
+当前输出上限：
 
 - 普通知识库问答：`1600` tokens
 - 直接聊天：`2000` tokens
 - 深度回答：`2400` tokens
 - 查询改写：`120` tokens
-- 请求超时：从 `45` 秒提高到 `90` 秒
-
-这样既能避免普通回答过早截断，又能给深度回答留出更完整的输出空间。
+- 定制练题出题：`900` tokens
+- 普通请求超时：`90` 秒
+- SSE emitter 超时：`180` 秒
 
 对应代码：
 
-- `DEFAULT_CHAT_MAX_TOKENS`
-- `DIRECT_CHAT_MAX_TOKENS`
-- `DEEP_CHAT_MAX_TOKENS`
-- `QUERY_REWRITE_MAX_TOKENS`
-- `CHAT_TIMEOUT`
+- `ChatService.callModel()`
+- `ChatService.callModelStream()`
+- `ChatService.responseTokenLimit()`
 
-## 十三、来源引用机制
+## 十一、来源引用与学习画像回写
 
-如果用户开启“引用来源”，后端会把最终进入 prompt 的片段转换成 `Source` 列表返回给前端。
-
-每个来源包含：
+当开启引用时，后端会把最终进入 Prompt 的片段转换为 `Source` 列表。每个来源包含：
 
 - 引用编号
+- chunk ID
 - 文件 ID
 - 文件夹 ID
 - 文件名
 - 页码
-- 片段摘要
+- 上下文摘要
+- 引用次数
+- 正确命中次数
+- 错误命中次数
+- 掌握度
+- 最近访问时间
+- 最近练习时间
 
-前端会识别答案中的 `[1]`、`[2]` 等编号，并渲染为可点击按钮。
+返回前，`KnowledgeChunkInteractionService.recordCitations()` 会校验 chunk 归属，增加 `citeCount`，更新 `lastAccessedAt`，并写入 `KnowledgeChunkEvent` 的 `CITED` 事件。用户在来源弹窗或定制题中点击“很清楚 / 忘记了”时，会增加正确或错误命中次数，并刷新最近练习时间。
 
-用户点击编号后，可以查看对应来源片段；双击来源弹窗可以打开完整文件并定位相关页。
+这些数据会被知识画像、薄弱知识点、定制练题选题和错题练习闭环使用。
 
 对应代码：
 
 - `ChatService.buildSources()`
-- `ChatService.contextualExcerpt()`
-- `frontend/src/App.vue`
+- `KnowledgeChunkInteractionService.recordCitations()`
+- `KnowledgeChunkInteractionService.recordFeedback()`
+- `KnowledgeProfileService`
 
-## 十四、降级与兜底策略
+## 十二、定制练题
 
-系统设计了多个兜底场景。
+定制练题的请求入口是 `/api/chat/teacher/question`，前端由 `requestTeacherQuestion()` 调用。它不使用普通问答表单中的“使用知识库 / 引用来源 / 深度回答”开关，而是固定在知识库范围内出题。
 
-### 1. 未配置 embedding API Key
+后端流程：
 
-如果没有 embedding API Key：
+1. 校验当前文件夹或用户选择的学科文件夹。
+2. 读取范围内可用知识片段。
+3. 排除本轮已问过的 `excludeChunkIds`，若全部问过则允许重新使用候选。
+4. 按相关性、引用次数、掌握度和遗忘风险选择片段。
+5. 记录一次引用。
+6. 调用模型基于该片段生成 `question` 和 `referenceAnswer`。
+7. 返回问题、参考答案、来源和 `chunkId`。
 
-- 保存资料时不会生成向量。
-- 提问时不会执行向量检索。
-- 系统仍然可以使用关键词检索和本地数据库排序。
+定制题可以直接加入错题集，并与来源 chunk 关联。后续刷错题时，“写对了 / 写错了”会回写相关 chunk 的学习统计。
 
-### 2. Elasticsearch 不可用
+对应代码：
 
-如果 Elasticsearch 请求失败：
+- `ChatService.teacherQuestion()`
+- `ChatService.selectTeacherChunk()`
+- `MistakeService.createFromTeacherQuestion()`
+- `MistakeService.recordPracticeResult()`
 
-- 系统会短暂标记 Elasticsearch 不可用。
-- 后续一段时间跳过 ES 检索。
-- 回退到数据库中的知识片段和本地关键词评分。
+## 十三、降级与兜底策略
 
-### 3. 未配置聊天模型 API Key
+系统设计了多个兜底场景：
 
-如果没有聊天模型 API Key：
-
-- 使用知识库时，系统会根据本地检索结果生成简易摘要。
-- 不使用知识库时，系统无法直接聊天，会提示用户配置模型服务或重新开启知识库。
-
-### 4. 模型接口无返回
-
-如果模型接口异常或返回空内容：
-
-- 使用知识库时，系统回退到本地检索摘要。
-- 不使用知识库时，系统提示检查 API Key、模型名和 Endpoint。
+- 未配置 embedding API Key：跳过向量生成和向量检索，仍可使用关键词检索与数据库本地评分。
+- Elasticsearch 不可用：短暂标记不可用，后续一段时间跳过 ES，回退到数据库 `KnowledgeChunk` 本地评分。
+- 未配置聊天模型 API Key：使用知识库时返回本地检索摘要；直接聊天时提示配置模型或开启知识库。
+- 模型接口异常或空返回：使用知识库时回退本地摘要；直接聊天时提示检查 API Key、模型名和 Endpoint。
+- 上传文本抽取失败：拒绝保存无效占位资料，提示用户处理 OCR 或文件内容问题。
 
 对应代码：
 
 - `ChatService.localAnswer()`
 - `ChatService.localDirectAnswer()`
 - `ElasticsearchService.markTemporarilyUnavailable()`
+- `TextExtractionService.isExtractionPlaceholder()`
 
-## 十五、完整流程图
+## 十四、完整流程图
 
 ```mermaid
 flowchart TD
-    A["用户上传资料"] --> B["保存文件信息"]
-    B --> C["抽取文本 / OCR"]
-    C --> D["用户校正文档文本"]
-    D --> E["保存为知识库"]
-    E --> F["切分 KnowledgeChunk"]
-    F --> G["数据库保存片段"]
-    F --> H["异步生成 embedding"]
-    H --> I["写入 Elasticsearch 索引"]
+    A["用户上传资料"] --> B["保存原始文件"]
+    B --> C["按文件类型抽取文本 / OCR"]
+    C --> D{"抽取结果是否有效"}
+    D -- "否" --> E["删除文件并提示错误"]
+    D -- "是" --> F["保存 StudyFile"]
+    F --> G["清理文本并执行语义切片"]
+    G --> H["保存 KnowledgeChunk"]
+    H --> I["异步生成 embedding"]
+    I --> J["写入 Elasticsearch 索引"]
 
-    J["用户发送问题"] --> K{"使用知识库?"}
-    K -- "否" --> L["构造直接聊天 Prompt"]
-    L --> M["调用聊天模型"]
-    M --> N["返回无引用回答"]
+    K["用户发送问题"] --> L{"使用知识库?"}
+    L -- "否" --> M["构造直接聊天 Prompt"]
+    M --> N["调用聊天模型"]
+    N --> O["返回无引用回答"]
 
-    K -- "是" --> O["确定当前文件夹及子文件夹范围"]
-    O --> P["关键词检索"]
-    O --> Q["向量检索"]
-    P --> R["RRF 融合候选片段"]
-    Q --> R
-    R --> S{"深度回答?"}
-    S -- "是" --> T["模型改写检索查询"]
-    T --> U["第二轮混合检索"]
-    U --> V["合并候选"]
-    S -- "否" --> V
-    V --> W["规则 rerank"]
-    W --> X["选出最多 5 个片段"]
-    X --> Y["构造知识库 Prompt"]
-    Y --> Z["调用聊天模型 / SSE 流式输出"]
-    Z --> AA["返回答案和来源片段"]
+    L -- "是" --> P["校验文件夹并确定子文件夹范围"]
+    P --> Q["关键词检索"]
+    P --> R["向量检索"]
+    Q --> S["RRF 融合候选"]
+    R --> S
+    S --> T{"深度回答?"}
+    T -- "是" --> U["模型改写检索查询"]
+    U --> V["第二轮混合检索"]
+    V --> W["合并候选"]
+    T -- "否" --> W
+    W --> X["规则 rerank 与多样性控制"]
+    X --> Y["选出最多 5 个片段"]
+    Y --> Z["构造知识库 Prompt"]
+    Z --> AA["调用模型 / SSE 输出"]
+    AA --> AB["返回答案和来源"]
+    AB --> AC["记录引用与学习画像事件"]
 ```
 
-## 十六、核心改造文件
+## 十五、核心文件
 
-本次改造涉及以下文件：
+后端：
 
 - `backend/src/main/java/com/example/exam/dto/ChatDtos.java`
-  - 新增 `useKnowledgeBase` 和 `deepAnswer` 请求参数。
-  - `folderId` 改为可为空，以支持不选择文件夹时直接聊天。
-
-- `backend/src/main/java/com/example/exam/service/ElasticsearchService.java`
-  - 混合检索融合结果从原先较少数量提升为 `20` 条候选。
-
+- `backend/src/main/java/com/example/exam/controller/ChatController.java`
 - `backend/src/main/java/com/example/exam/service/ChatService.java`
-  - 新增直接聊天分支。
-  - 新增深度回答查询改写。
-  - 新增候选合并和规则 rerank。
-  - 最终选取 `5` 个片段进入 prompt。
-  - 提高模型输出 token 上限，修复回答不完整问题。
+- `backend/src/main/java/com/example/exam/service/FileService.java`
+- `backend/src/main/java/com/example/exam/service/TextExtractionService.java`
+- `backend/src/main/java/com/example/exam/service/ElasticsearchService.java`
+- `backend/src/main/java/com/example/exam/service/EmbeddingService.java`
+- `backend/src/main/java/com/example/exam/service/KnowledgeChunkInteractionService.java`
+- `backend/src/main/java/com/example/exam/model/KnowledgeChunk.java`
+- `backend/src/main/java/com/example/exam/model/KnowledgeChunkEvent.java`
 
-- `frontend/src/App.vue`
-  - 新增“使用知识库”“引用来源”“深度回答”三个选项。
-  - 关闭知识库后允许不选择文件夹直接聊天。
-  - 根据不同模式显示不同输入提示和加载提示。
+前端：
 
-- `frontend/src/styles.css`
-  - 新增聊天选项区域样式。
+- `frontend/src/views/ChatView.vue`
+- `frontend/src/composables/useSmartExamApp.js`
+- `frontend/src/api/client.js`
+- `frontend/src/styles/knowledge-editor.css`
+- `frontend/src/styles/profile-settings.css`
+- `frontend/src/styles/responsive.css`
 
-## 十七、答辩表述建议
+相关扩展文档：
 
-可以这样概括本系统的知识问答机制：
+- `docs/08-learning-profile-teacher-mistake-upgrade.md`
+- `docs/09-semantic-chunking-design.md`
+- `docs/09-knowledge-profile-enhancement.md`
 
-> 本系统采用基于 Elasticsearch 的混合检索增强生成方案。资料上传后，系统会抽取文本并切分为知识片段，再异步生成 embedding 并写入 Elasticsearch。用户提问时，系统在当前文件夹及其子文件夹范围内同时执行关键词检索和向量检索，通过 RRF 融合得到候选片段，再使用轻量规则 rerank 选出最相关的知识片段交给大模型生成回答。系统支持来源引用、深度回答和直接聊天三种模式，既保证知识库问答的可追溯性，也保留了普通大模型对话的灵活性。
+## 十六、答辩表述建议
 
+可以这样概括当前系统的知识问答机制：
+
+> 本系统采用面向个人考研资料的混合检索增强生成方案。资料上传后，系统先抽取文本，再基于标题、段落和句子边界切分为语义完整的知识片段，并异步生成 embedding 写入 Elasticsearch。用户提问时，系统在当前文件夹及其子文件夹范围内同时执行关键词检索和向量检索，通过 RRF 融合得到候选片段，再使用规则 rerank 和片段多样性控制选出最多 5 个片段交给大模型生成回答。答案可返回来源引用，引用和用户反馈会回写知识片段统计，并进一步服务知识画像、定制练题选题和错题复盘闭环。
