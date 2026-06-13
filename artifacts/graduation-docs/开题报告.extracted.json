@@ -1,0 +1,193 @@
+{
+  "file": "D:\\Project\\biyesheji\\ips-java\\artifacts\\graduation-docs\\开题报告.docx",
+  "paragraphs": [
+    {
+      "index": 0,
+      "style": "Normal",
+      "text": "青岛理工大学"
+    },
+    {
+      "index": 1,
+      "style": "Normal",
+      "text": "本科生毕业设计（论文）开题报告"
+    },
+    {
+      "index": 11,
+      "style": "Normal",
+      "text": "学    院         信息管理学院"
+    },
+    {
+      "index": 12,
+      "style": "Normal",
+      "text": "专业班级           软件222"
+    },
+    {
+      "index": 13,
+      "style": "Normal",
+      "text": "学生学号          202201050631"
+    },
+    {
+      "index": 14,
+      "style": "Normal",
+      "text": "学生姓名            金宁丰"
+    },
+    {
+      "index": 15,
+      "style": "Normal",
+      "text": "指导教师             陈晓琳"
+    },
+    {
+      "index": 16,
+      "style": "Normal",
+      "text": "指导教师职称          讲师"
+    },
+    {
+      "index": 19,
+      "style": "Normal",
+      "text": "2026年6月11日"
+    }
+  ],
+  "tables": [
+    {
+      "index": 0,
+      "rows": [
+        [
+          "毕业设计（论文）题目"
+        ],
+        [
+          "基于RAG与知识画像的考研学习辅助系统设计与实现"
+        ],
+        [
+          "题目来源"
+        ],
+        [
+          "学生自选"
+        ],
+        [
+          "一、本课题的研究目的和意义\n考研备考具有周期长、知识量大、资料来源多样等特点。学习者通常需要同时管理教材、讲义、个人笔记、历年真题、错题截图和专题总结，容易出现资料分散、知识定位效率低、错题复盘不连续、薄弱点难以识别以及学习计划缺少动态依据等问题。现有在线学习平台和电子笔记工具能够提供课程获取或资料存储功能，但对个人资料的语义理解、来源追溯和学习状态联动支持仍较有限。\n本课题拟设计一套基于RAG与知识画像的考研学习辅助系统，将用户上传的多类型学习资料转化为可检索、可引用、可记录学习状态的知识片段；采用关键词检索与向量检索相结合的方式支持个人知识库问答；根据问答反馈、错题练习和知识片段事件构建知识画像，并据此辅助生成复习建议与学习计划，形成“资料整理—知识检索—错题复盘—薄弱点识别—计划调整”的学习闭环。\n本课题的研究意义主要体现在三个方面：在理论层面，探索RAG问答、学习行为分析与知识画像在个人考研场景中的结合方式；在实践层面，帮助学习者集中管理资料、快速定位知识依据并开展针对性复习；在工程层面，形成基于SpringBoot、Vue3、MySQL、Elasticsearch和大语言模型接口的模块化实现方案，为智能学习系统和个人知识库平台的开发提供参考。"
+        ],
+        [
+          "二、国内外研究现状及发展趋势\n国内外在线学习系统的研究已由课程资源发布和学习记录保存，逐步转向个性化学习路径、学习过程支持和资源推荐。但多数应用依赖固定课程结构和教师组织，难以直接适应考研自学中资料来源分散、复习节奏差异大等特点。\n在智能问答领域，传统系统主要依赖规则、关键词匹配或结构化知识库。大语言模型提升了自然语言理解和答案生成能力，但其参数知识难以及时覆盖用户私有资料，且可能产生无法核验的内容。RAG框架将外部检索结果作为生成模型的上下文，为知识密集型问答提供了可追溯路径。近年来，国内外研究进一步关注知识库构建、文档切分、混合召回、候选重排和回答引用等环节。\n在检索方法方面，关键词检索适合匹配明确术语，向量检索能够发现表述不同但语义相近的内容。现有研究较多关注召回率和回答准确性，对问答后的学习反馈如何持续沉淀为个人学习状态研究相对不足。\n教育知识图谱、学习分析和知识追踪研究为学习诊断提供了另一类思路。相关工作通过组织知识点、学习资源、答题记录和学习行为，对掌握状态进行估计并支持个性化推荐。但个人考研资料规模较小、格式不统一，直接构建复杂知识图谱或采用需要大量交互数据的知识追踪模型，存在成本较高和冷启动明显等问题。\n综合来看，相关研究正呈现三个趋势：一是从通用模型问答转向基于私有知识库的可追溯问答；二是从单一检索转向关键词、向量召回与重排序结合的混合检索；三是从孤立的问答或错题功能转向学习行为、薄弱点分析和计划推荐联动。面向考研自学场景，仍需研究一种数据要求较低、能够连接个人资料、问答反馈、错题复盘和学习计划的轻量化知识画像方案。\n三、本课题主要研究内容\n（1）系统需求与总体架构。分析考研学习者在资料管理、知识问答、错题复盘和学习计划方面的需求，拟采用前后端分离架构，划分用户与学习档案、资料管理、知识库问答、知识画像、错题复盘和学习计划等模块。\n（2）个人知识库构建。研究PDF、Word、图片和文本等资料的文本抽取方法，结合标题、句子边界和语义连续性进行知识切片，将长篇资料转化为可检索、可引用、可记录学习事件的知识切片。\n（3）混合检索与RAG问答。研究关键词检索与Embedding向量检索的互补召回机制，采用RRF进行结果融合，并结合规则重排、去重和多样性筛选构造模型上下文，验证大模型回答能够准确根据个人资料生成并提供来源引用。\n（4）知识画像分析。围绕知识片段汇总问答引用、用户反馈、错题关联、练习结果和复习时间等事件，设计掌握程度、错误频率、遗忘风险和复习优先级等指标，形成可动态更新的个人知识画像。\n（5）错题复盘与知识点关联。支持错题录入、附件识别、标签分类、状态管理和练习记录，将错题与相关知识片段建立关联，使练习结果能够回写并更新画像。\n（6）个性化学习计划。根据知识画像和错题分析结果生成学习建议与计划草稿，经用户确认后写入日程。"
+        ],
+        [
+          "四、拟解决的关键问题\n（1）多类型资料难以统一处理的问题。不同文件格式在文本结构、编码和图片内容上存在差异，需要设计分类抽取、OCR识别、人工校正和语义切片流程，保证进入知识库的文本质量。\n（2）用户提问与资料原文表述不一致的问题。单一关键词检索可能遗漏语义相关内容，单一向量检索又可能弱化专业术语匹配，需研究混合召回、RRF融合和候选重排方法。\n（3）生成式回答可信度不足的问题。需要限制模型优先依据检索片段回答，并保留文件名、页码或片段摘要等来源信息，便于学习者核验。\n（4）个人学习数据稀疏条件下的画像构建问题。考研自学缺少标准化题库和大规模作答数据，需以知识片段为基本单元，利用问答反馈、错题练习和时间衰减构建轻量化、可解释的画像指标。\n（5）各功能模块数据难以形成闭环的问题。需明确资料、知识片段、问答事件、错题、画像和学习计划之间的数据关系，并设计外部检索或模型服务不可用时的降级策略。\n五、研究思路和方法\n本课题拟按照“问题分析—需求建模—总体设计—模块实现—系统测试—总结改进”的思路开展。首先分析考研学习中资料分散、问答依据不清和复习反馈不足等问题，明确系统边界和核心数据对象；随后以知识片段作为连接资料内容与学习行为的中间载体，设计RAG问答和知识画像两条核心数据链路；最后通过原型迭代和测试验证各模块的可行性。\n（1）文献研究法。查阅个性化学习、教育知识图谱、学习分析、知识追踪、RAG、混合检索和大语言模型应用等文献，梳理研究现状并确定技术边界。\n（2）需求分析与建模法。通过场景分析、用例分析和业务流程建模，明确用户角色、功能需求、非功能需求以及资料、知识片段、错题和计划等实体关系。\n（3）系统设计与原型迭代法。拟采用Spring Boot构建后端服务，Vue 3构建前端界面，MySQL存储业务数据，Elasticsearch提供全文和向量检索；按照模块逐步实现并通过联调持续修正设计。\n（4）对比与实验验证法。针对关键词检索、向量检索和混合检索设计典型问题集，比较召回结果；针对资料处理、来源引用、画像更新、错题回写和计划生成设计功能测试与异常场景测试。"
+        ],
+        [
+          "六、本课题的进度安排\n第一阶段（4.13—4.26，2周）：系统完善与联调测试\n完成AI对话模块与业务系统接口联调，实现RAG检索流程端到端验证，修复核心功能缺陷，编写单元测试与集成测试用例。交付可运行的系统原型及测试文档。\n第二阶段（4.27—5.11，2周）：手册编写与论文初稿\n完成系统部署手册、用户操作指南，撰写毕业设计论文初稿（涵盖绪论至系统实现章节），整理系统设计图、流程图、数据库ER图等插图素材。\n第三阶段（5.12—5.18，1周）：论文完善与教师评阅\n根据指导教师意见修改论文，补充系统测试章节与性能评估数据，完善摘要、结论与参考文献格式。\n第四阶段（5.19—5.30，1.5周）：系统优化与答辩准备\n针对评阅意见优化系统功能，制作答辩PPT，准备系统演示环境，进行模拟答辩演练。\n第五阶段（5.31—6.6，1周）：查重检测与最终修改\n提交论文查重并根据结果调整，完成格式审查与最终排版，准备答辩材料。\n第六阶段（6.7—6.11，0.5周）：毕业答辩与材料归档\n参加毕业设计答辩，根据委员会意见修改论文，提交最终版论文及电子档案。"
+        ],
+        [
+          "七、参考文献\n[1] 车璐,张志强,周金佳,等.生成式人工智能的研究现状和发展趋势[J].科技导报,2024,42(12):35-43.\n[2] 刘邦奇,聂小林,王士进,等.生成式人工智能与未来教育形态重塑：技术框架、能力特征及应用趋势[J].电化教育研究,2024,45(1):13-20.DOI:10.13811/j.cnki.eer.2024.01.002.\n[3] LEWIS P, PEREZ E, PIKTUS A, et al. Retrieval-augmented generation for knowledge-intensive NLP tasks[C]//Advances in Neural Information Processing Systems 33. 2020: 9459-9474.\n[4] ALFREDO R, ECHEVERRIA V, JIN Y, et al. Human-centred learning analytics and AI in education: A systematic literature review[J]. Computers and Education: Artificial Intelligence, 2024: 100215. DOI:\n[5] 王士进, 吴金泽, 张浩天, 等. 可信的端到端深度学生知识画像建模方法[J]. 计算机研究与发展, 2023, 60(8): 1822-1833.\n[6] 云岳, 代欢, 张育培, 等. 个性化学习路径推荐综述[J]. 软件学报, 2022, 33(12): 4590-4615.\n[7] NABIZADEH A H, GONCALVES D, GAMA S, et al. Learning path personalization and recommendation methods: a survey of the state-of-the-art[J]. Expert Systems with Applications, 2020, 159: 113596.\n[8] 文森, 钱力, 胡懋地, 等. 基于大语言模型的问答技术研究进展综述[J]. 数据分析与知识发现, 2024, 8(6): 16-29.\n[9] 刘雪颖, 云静, 李博, 等. 基于大型语言模型的检索增强生成综述[J]. 计算机工程与应用, 2025, 61(13): 1-25.\n[10] SWACHA J, GRACEL M. Retrieval-Augmented Generation (RAG) chatbots for education: a survey of applications[J]. Applied Sciences, 2025, 15(8): 4234.\n[11] 李惠乾, 钟柏昌. 教育知识图谱: 研究进展与未来发展--基于2013-2023年中文核心期刊载文的分析[J]. 计算机工程, 2024, 50(7): 1-12.\n[12] ALAMRI H A, WATSON S, WATSON W. A systematic review of the role of learning analytics in supporting personalized learning[J]. Education Sciences, 2024, 14(1): 51.\n[13] PIECH C, BASSEN J, HUANG J, et al. Deep knowledge tracing[C]//Advances in Neural Information Processing Systems 28. 2015.\n[14] 刘铁园, 陈威, 常亮, 等. 基于深度学习的知识追踪研究进展[J]. 计算机研究与发展, 2022, 59(1): 81-104.\n[15] XIA J, LI G, CAO Z. Personalized exercise recommendation algorithm combining learning objective and assignment feedback[J]. Journal of Intelligent & Fuzzy Systems, 2018, 35(3): 2965-2973. DOI: 10.3233/JIFS-169652.\n[16] CORMACK G V, CLARKE C L A, BÜTTCHER S. Reciprocal rank fusion outperforms Condorcet and individual rank learning methods[C]//Proceedings of the 32nd International ACM SIGIR Conference. New York: ACM, 2009: 758-759. DOI: 10.1145/1571941.1572114.\n[17] BRUCH S, GAI S, INGBER A. An analysis of fusion functions for hybrid retrieval[EB/OL]. arXiv, 2022. https://arxiv.org/abs/2210.11934.\n[18] LI L, WANG Z. Knowledge Graph Enhanced Intelligent Tutoring System Based on Exercise Representativeness and Informativeness[EB/OL]. arXiv, 2023.\n[19] XIA J, LI G, CAO Z. Personalized exercise recommendation algorithm combining learning objective and assignment feedback[J]. Journal of Intelligent & Fuzzy Systems, 2018, 35(3): 2965-2973. DOI: 10.3233/JIFS-169652.\n[20] LI L, CHU W, LANGFORD J, et al. A contextual-bandit approach to personalized news article recommendation[C]//Proceedings of WWW '10. 2010: 661-670. DOI: 10.1145/1772690.1772758.\n[21] ABDELRAHMAN G, WANG Q, NUNES B P. Knowledge tracing: A survey[J]. ACM Computing Surveys, 2023, 55(11): 1-37. DOI: 10.1145/3569576.\n[22] HOFF P D. A First Course in Bayesian Statistical Methods[M]. New York: Springer, 2009.\n[23] CARPENTER S K, PAN S C, BUTLER A C. The science of effective learning with spacing and retrieval practice[J]. Nature Reviews Psychology, 2022, 1: 496-511. \n八、指导教师意见\n\n\n\n签名\n年        月        日"
+        ],
+        [
+          "九、学院审核意见\n\n\n\n                                                教研室主任签名：\n教学院长签名：\n年        月        日"
+        ]
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "index": 0,
+      "page_width": 7560310,
+      "page_height": 10692130,
+      "top_margin": 914400,
+      "bottom_margin": 914400,
+      "left_margin": 1143000,
+      "right_margin": 1143000
+    }
+  ],
+  "headers": [],
+  "footers": [],
+  "comments": [],
+  "tracked_changes": {
+    "insertions": 0,
+    "deletions": 0
+  },
+  "all_document_text": [
+    "青岛理工大学",
+    "本科生毕业设计（论文）开题报告",
+    "学    院         信息管理学院",
+    "专业班级           软件222",
+    "学生学号          202201050631",
+    "学生姓名            金宁丰",
+    "指导教师             陈晓琳",
+    "指导教师职称          讲师",
+    "2026年6月11日",
+    "毕业设计（论文）题目",
+    "基于RAG与知识画像的考研学习辅助系统设计与实现",
+    "题目来源",
+    "学生自选",
+    "一、本课题的研究目的和意义",
+    "考研备考具有周期长、知识量大、资料来源多样等特点。学习者通常需要同时管理教材、讲义、个人笔记、历年真题、错题截图和专题总结，容易出现资料分散、知识定位效率低、错题复盘不连续、薄弱点难以识别以及学习计划缺少动态依据等问题。现有在线学习平台和电子笔记工具能够提供课程获取或资料存储功能，但对个人资料的语义理解、来源追溯和学习状态联动支持仍较有限。",
+    "本课题拟设计一套基于RAG与知识画像的考研学习辅助系统，将用户上传的多类型学习资料转化为可检索、可引用、可记录学习状态的知识片段；采用关键词检索与向量检索相结合的方式支持个人知识库问答；根据问答反馈、错题练习和知识片段事件构建知识画像，并据此辅助生成复习建议与学习计划，形成“资料整理—知识检索—错题复盘—薄弱点识别—计划调整”的学习闭环。",
+    "本课题的研究意义主要体现在三个方面：在理论层面，探索RAG问答、学习行为分析与知识画像在个人考研场景中的结合方式；在实践层面，帮助学习者集中管理资料、快速定位知识依据并开展针对性复习；在工程层面，形成基于SpringBoot、Vue3、MySQL、Elasticsearch和大语言模型接口的模块化实现方案，为智能学习系统和个人知识库平台的开发提供参考。",
+    "二、国内外研究现状及发展趋势",
+    "国内外在线学习系统的研究已由课程资源发布和学习记录保存，逐步转向个性化学习路径、学习过程支持和资源推荐。但多数应用依赖固定课程结构和教师组织，难以直接适应考研自学中资料来源分散、复习节奏差异大等特点。",
+    "在智能问答领域，传统系统主要依赖规则、关键词匹配或结构化知识库。大语言模型提升了自然语言理解和答案生成能力，但其参数知识难以及时覆盖用户私有资料，且可能产生无法核验的内容。RAG框架将外部检索结果作为生成模型的上下文，为知识密集型问答提供了可追溯路径。近年来，国内外研究进一步关注知识库构建、文档切分、混合召回、候选重排和回答引用等环节。",
+    "在检索方法方面，关键词检索适合匹配明确术语，向量检索能够发现表述不同但语义相近的内容。现有研究较多关注召回率和回答准确性，对问答后的学习反馈如何持续沉淀为个人学习状态研究相对不足。",
+    "教育知识图谱、学习分析和知识追踪研究为学习诊断提供了另一类思路。相关工作通过组织知识点、学习资源、答题记录和学习行为，对掌握状态进行估计并支持个性化推荐。但个人考研资料规模较小、格式不统一，直接构建复杂知识图谱或采用需要大量交互数据的知识追踪模型，存在成本较高和冷启动明显等问题。",
+    "综合来看，相关研究正呈现三个趋势：一是从通用模型问答转向基于私有知识库的可追溯问答；二是从单一检索转向关键词、向量召回与重排序结合的混合检索；三是从孤立的问答或错题功能转向学习行为、薄弱点分析和计划推荐联动。面向考研自学场景，仍需研究一种数据要求较低、能够连接个人资料、问答反馈、错题复盘和学习计划的轻量化知识画像方案。",
+    "三、本课题主要研究内容",
+    "（1）系统需求与总体架构。分析考研学习者在资料管理、知识问答、错题复盘和学习计划方面的需求，拟采用前后端分离架构，划分用户与学习档案、资料管理、知识库问答、知识画像、错题复盘和学习计划等模块。",
+    "（2）个人知识库构建。研究PDF、Word、图片和文本等资料的文本抽取方法，结合标题、句子边界和语义连续性进行知识切片，将长篇资料转化为可检索、可引用、可记录学习事件的知识切片。",
+    "（3）混合检索与RAG问答。研究关键词检索与Embedding向量检索的互补召回机制，采用RRF进行结果融合，并结合规则重排、去重和多样性筛选构造模型上下文，验证大模型回答能够准确根据个人资料生成并提供来源引用。",
+    "（4）知识画像分析。围绕知识片段汇总问答引用、用户反馈、错题关联、练习结果和复习时间等事件，设计掌握程度、错误频率、遗忘风险和复习优先级等指标，形成可动态更新的个人知识画像。",
+    "（5）错题复盘与知识点关联。支持错题录入、附件识别、标签分类、状态管理和练习记录，将错题与相关知识片段建立关联，使练习结果能够回写并更新画像。",
+    "（6）个性化学习计划。根据知识画像和错题分析结果生成学习建议与计划草稿，经用户确认后写入日程。",
+    "四、拟解决的关键问题",
+    "（1）多类型资料难以统一处理的问题。不同文件格式在文本结构、编码和图片内容上存在差异，需要设计分类抽取、OCR识别、人工校正和语义切片流程，保证进入知识库的文本质量。",
+    "（2）用户提问与资料原文表述不一致的问题。单一关键词检索可能遗漏语义相关内容，单一向量检索又可能弱化专业术语匹配，需研究混合召回、RRF融合和候选重排方法。",
+    "（3）生成式回答可信度不足的问题。需要限制模型优先依据检索片段回答，并保留文件名、页码或片段摘要等来源信息，便于学习者核验。",
+    "（4）个人学习数据稀疏条件下的画像构建问题。考研自学缺少标准化题库和大规模作答数据，需以知识片段为基本单元，利用问答反馈、错题练习和时间衰减构建轻量化、可解释的画像指标。",
+    "（5）各功能模块数据难以形成闭环的问题。需明确资料、知识片段、问答事件、错题、画像和学习计划之间的数据关系，并设计外部检索或模型服务不可用时的降级策略。",
+    "五、研究思路和方法",
+    "本课题拟按照“问题分析—需求建模—总体设计—模块实现—系统测试—总结改进”的思路开展。首先分析考研学习中资料分散、问答依据不清和复习反馈不足等问题，明确系统边界和核心数据对象；随后以知识片段作为连接资料内容与学习行为的中间载体，设计RAG问答和知识画像两条核心数据链路；最后通过原型迭代和测试验证各模块的可行性。",
+    "（1）文献研究法。查阅个性化学习、教育知识图谱、学习分析、知识追踪、RAG、混合检索和大语言模型应用等文献，梳理研究现状并确定技术边界。",
+    "（2）需求分析与建模法。通过场景分析、用例分析和业务流程建模，明确用户角色、功能需求、非功能需求以及资料、知识片段、错题和计划等实体关系。",
+    "（3）系统设计与原型迭代法。拟采用Spring Boot构建后端服务，Vue 3构建前端界面，MySQL存储业务数据，Elasticsearch提供全文和向量检索；按照模块逐步实现并通过联调持续修正设计。",
+    "（4）对比与实验验证法。针对关键词检索、向量检索和混合检索设计典型问题集，比较召回结果；针对资料处理、来源引用、画像更新、错题回写和计划生成设计功能测试与异常场景测试。",
+    "六、本课题的进度安排",
+    "第一阶段（4.13—4.26，2周）：系统完善与联调测试",
+    "完成AI对话模块与业务系统接口联调，实现RAG检索流程端到端验证，修复核心功能缺陷，编写单元测试与集成测试用例。交付可运行的系统原型及测试文档。",
+    "第二阶段（4.27—5.11，2周）：手册编写与论文初稿",
+    "完成系统部署手册、用户操作指南，撰写毕业设计论文初稿（涵盖绪论至系统实现章节），整理系统设计图、流程图、数据库ER图等插图素材。",
+    "第三阶段（5.12—5.18，1周）：论文完善与教师评阅",
+    "根据指导教师意见修改论文，补充系统测试章节与性能评估数据，完善摘要、结论与参考文献格式。",
+    "第四阶段（5.19—5.30，1.5周）：系统优化与答辩准备",
+    "针对评阅意见优化系统功能，制作答辩PPT，准备系统演示环境，进行模拟答辩演练。",
+    "第五阶段（5.31—6.6，1周）：查重检测与最终修改",
+    "提交论文查重并根据结果调整，完成格式审查与最终排版，准备答辩材料。",
+    "第六阶段（6.7—6.11，0.5周）：毕业答辩与材料归档",
+    "参加毕业设计答辩，根据委员会意见修改论文，提交最终版论文及电子档案。",
+    "七、参考文献",
+    "[1] 车璐,张志强,周金佳,等.生成式人工智能的研究现状和发展趋势[J].科技导报,2024,42(12):35-43.",
+    "[2] 刘邦奇,聂小林,王士进,等.生成式人工智能与未来教育形态重塑：技术框架、能力特征及应用趋势[J].电化教育研究,2024,45(1):13-20.DOI:10.13811/j.cnki.eer.2024.01.002.",
+    "[3] LEWIS P, PEREZ E, PIKTUS A, et al. Retrieval-augmented generation for knowledge-intensive NLP tasks[C]//Advances in Neural Information Processing Systems 33. 2020: 9459-9474.",
+    "[4] ALFREDO R, ECHEVERRIA V, JIN Y, et al. Human-centred learning analytics and AI in education: A systematic literature review[J]. Computers and Education: Artificial Intelligence, 2024: 100215. DOI:",
+    "[5] 王士进, 吴金泽, 张浩天, 等. 可信的端到端深度学生知识画像建模方法[J]. 计算机研究与发展, 2023, 60(8): 1822-1833.",
+    "[6] 云岳, 代欢, 张育培, 等. 个性化学习路径推荐综述[J]. 软件学报, 2022, 33(12): 4590-4615.",
+    "[7] NABIZADEH A H, GONCALVES D, GAMA S, et al. Learning path personalization and recommendation methods: a survey of the state-of-the-art[J]. Expert Systems with Applications, 2020, 159: 113596.",
+    "[8] 文森, 钱力, 胡懋地, 等. 基于大语言模型的问答技术研究进展综述[J]. 数据分析与知识发现, 2024, 8(6): 16-29.",
+    "[9] 刘雪颖, 云静, 李博, 等. 基于大型语言模型的检索增强生成综述[J]. 计算机工程与应用, 2025, 61(13): 1-25.",
+    "[10] SWACHA J, GRACEL M. Retrieval-Augmented Generation (RAG) chatbots for education: a survey of applications[J]. Applied Sciences, 2025, 15(8): 4234.",
+    "[11] 李惠乾, 钟柏昌. 教育知识图谱: 研究进展与未来发展--基于2013-2023年中文核心期刊载文的分析[J]. 计算机工程, 2024, 50(7): 1-12.",
+    "[12] ALAMRI H A, WATSON S, WATSON W. A systematic review of the role of learning analytics in supporting personalized learning[J]. Education Sciences, 2024, 14(1): 51.",
+    "[13] PIECH C, BASSEN J, HUANG J, et al. Deep knowledge tracing[C]//Advances in Neural Information Processing Systems 28. 2015.",
+    "[14] 刘铁园, 陈威, 常亮, 等. 基于深度学习的知识追踪研究进展[J]. 计算机研究与发展, 2022, 59(1): 81-104.",
+    "[15] XIA J, LI G, CAO Z. Personalized exercise recommendation algorithm combining learning objective and assignment feedback[J]. Journal of Intelligent & Fuzzy Systems, 2018, 35(3): 2965-2973. DOI: 10.3233/JIFS-169652.",
+    "[16] CORMACK G V, CLARKE C L A, BÜTTCHER S. Reciprocal rank fusion outperforms Condorcet and individual rank learning methods[C]//Proceedings of the 32nd International ACM SIGIR Conference. New York: ACM, 2009: 758-759. DOI: 10.1145/1571941.1572114.",
+    "[17] BRUCH S, GAI S, INGBER A. An analysis of fusion functions for hybrid retrieval[EB/OL]. arXiv, 2022. https://arxiv.org/abs/2210.11934.",
+    "[18] LI L, WANG Z. Knowledge Graph Enhanced Intelligent Tutoring System Based on Exercise Representativeness and Informativeness[EB/OL]. arXiv, 2023.",
+    "[19] XIA J, LI G, CAO Z. Personalized exercise recommendation algorithm combining learning objective and assignment feedback[J]. Journal of Intelligent & Fuzzy Systems, 2018, 35(3): 2965-2973. DOI: 10.3233/JIFS-169652.",
+    "[20] LI L, CHU W, LANGFORD J, et al. A contextual-bandit approach to personalized news article recommendation[C]//Proceedings of WWW '10. 2010: 661-670. DOI: 10.1145/1772690.1772758.",
+    "[21] ABDELRAHMAN G, WANG Q, NUNES B P. Knowledge tracing: A survey[J]. ACM Computing Surveys, 2023, 55(11): 1-37. DOI: 10.1145/3569576.",
+    "[22] HOFF P D. A First Course in Bayesian Statistical Methods[M]. New York: Springer, 2009.",
+    "[23] CARPENTER S K, PAN S C, BUTLER A C. The science of effective learning with spacing and retrieval practice[J]. Nature Reviews Psychology, 2022, 1: 496-511.",
+    "八、指导教师意见",
+    "签名",
+    "年        月        日",
+    "九、学院审核意见",
+    "教研室主任签名：",
+    "教学院长签名：",
+    "年        月        日"
+  ]
+}

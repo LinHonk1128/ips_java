@@ -1,0 +1,1389 @@
+{
+  "path": "C:\\Users\\admin\\Downloads\\青岛理工大学本科毕业设计（论文）统一模板\\青岛理工大学本科毕业设计（论文）统一模板-2024-12-30\\3-青岛理工大学本科生毕业设计（论文）开题报告模板(更新校徽）.docx",
+  "paragraphs": [
+    {
+      "index": 0,
+      "style": "Normal",
+      "text": "青岛理工大学",
+      "runs": [
+        {
+          "text": "青岛理工大学",
+          "bold": null,
+          "italic": null,
+          "size_pt": 18.0,
+          "font": "宋体"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "style": "Normal",
+      "text": "本科生毕业设计（论文）开题报告",
+      "runs": [
+        {
+          "text": "本科生毕业设计（论文）开题报告",
+          "bold": null,
+          "italic": null,
+          "size_pt": 22.0,
+          "font": "黑体"
+        }
+      ]
+    },
+    {
+      "index": 2,
+      "style": "Normal",
+      "text": "",
+      "runs": []
+    },
+    {
+      "index": 3,
+      "style": "Normal",
+      "text": "",
+      "runs": [
+        {
+          "text": "",
+          "bold": null,
+          "italic": null,
+          "size_pt": null,
+          "font": null
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "style": "Normal",
+      "text": "",
+      "runs": []
+    },
+    {
+      "index": 5,
+      "style": "Normal",
+      "text": "",
+      "runs": []
+    },
+    {
+      "index": 6,
+      "style": "Normal",
+      "text": "",
+      "runs": []
+    },
+    {
+      "index": 7,
+      "style": "Normal",
+      "text": "",
+      "runs": []
+    },
+    {
+      "index": 8,
+      "style": "Normal",
+      "text": "",
+      "runs": []
+    },
+    {
+      "index": 9,
+      "style": "Normal",
+      "text": "",
+      "runs": []
+    },
+    {
+      "index": 10,
+      "style": "Normal",
+      "text": "       ",
+      "runs": [
+        {
+          "text": "       ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 12.0,
+          "font": "宋体"
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "style": "Normal",
+      "text": "学    院                             ",
+      "runs": [
+        {
+          "text": "学    院 ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        },
+        {
+          "text": "                            ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        }
+      ]
+    },
+    {
+      "index": 12,
+      "style": "Normal",
+      "text": "专业班级                             ",
+      "runs": [
+        {
+          "text": "专业班级",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        },
+        {
+          "text": " ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        },
+        {
+          "text": "                            ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        }
+      ]
+    },
+    {
+      "index": 13,
+      "style": "Normal",
+      "text": "学生学号                             ",
+      "runs": [
+        {
+          "text": "学生学号 ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        },
+        {
+          "text": "                            ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        }
+      ]
+    },
+    {
+      "index": 14,
+      "style": "Normal",
+      "text": "学生姓名                             ",
+      "runs": [
+        {
+          "text": "学生姓名 ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        },
+        {
+          "text": "                            ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        }
+      ]
+    },
+    {
+      "index": 15,
+      "style": "Normal",
+      "text": "指导教师                             ",
+      "runs": [
+        {
+          "text": "指导教师",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        },
+        {
+          "text": " ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        },
+        {
+          "text": "                            ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        }
+      ]
+    },
+    {
+      "index": 16,
+      "style": "Normal",
+      "text": " 指导教师职称                         ",
+      "runs": [
+        {
+          "text": " 指导教师",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        },
+        {
+          "text": "职称",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        },
+        {
+          "text": "                         ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        }
+      ]
+    },
+    {
+      "index": 17,
+      "style": "Normal",
+      "text": "         ",
+      "runs": [
+        {
+          "text": "       ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 14.0,
+          "font": "宋体"
+        },
+        {
+          "text": " ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 9.0,
+          "font": "宋体"
+        },
+        {
+          "text": " ",
+          "bold": null,
+          "italic": null,
+          "size_pt": 15.0,
+          "font": "宋体"
+        }
+      ]
+    },
+    {
+      "index": 18,
+      "style": "Normal",
+      "text": "",
+      "runs": []
+    },
+    {
+      "index": 19,
+      "style": "Normal",
+      "text": "年    月   日",
+      "runs": [
+        {
+          "text": "年    月   日",
+          "bold": null,
+          "italic": null,
+          "size_pt": 14.0,
+          "font": "宋体"
+        }
+      ]
+    },
+    {
+      "index": 20,
+      "style": "Normal",
+      "text": "",
+      "runs": []
+    },
+    {
+      "index": 21,
+      "style": "Normal",
+      "text": "",
+      "runs": []
+    }
+  ],
+  "tables": [
+    {
+      "index": 0,
+      "rows": [
+        {
+          "index": 0,
+          "cells": [
+            {
+              "index": 0,
+              "text": "毕业设计（论文）题目",
+              "paragraphs": [
+                {
+                  "style": "Normal",
+                  "text": "毕业设计（论文）题目",
+                  "runs": [
+                    {
+                      "text": "毕业设计（论文）",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "题目",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "cells": [
+            {
+              "index": 0,
+              "text": "",
+              "paragraphs": [
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "cells": [
+            {
+              "index": 0,
+              "text": "题目来源",
+              "paragraphs": [
+                {
+                  "style": "Normal",
+                  "text": "题目来源",
+                  "runs": [
+                    {
+                      "text": "题目来源",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "cells": [
+            {
+              "index": 0,
+              "text": "",
+              "paragraphs": [
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "cells": [
+            {
+              "index": 0,
+              "text": "一、本课题的研究目的和意义\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+              "paragraphs": [
+                {
+                  "style": "Normal",
+                  "text": "一、本课题的研究目的和意义",
+                  "runs": [
+                    {
+                      "text": "一",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "、",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "本课题的研究目的和意义",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    }
+                  ]
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "cells": [
+            {
+              "index": 0,
+              "text": "二、国内外研究现状及发展趋势\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n三、本课题主要研究内容\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+              "paragraphs": [
+                {
+                  "style": "Normal",
+                  "text": "二、国内外研究现状及发展趋势",
+                  "runs": [
+                    {
+                      "text": "二",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "、国内外研究现状",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "及",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "发展趋势",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    }
+                  ]
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "三、本课题主要研究内容",
+                  "runs": [
+                    {
+                      "text": "三、本课题主要研究内容",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    }
+                  ]
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 6,
+          "cells": [
+            {
+              "index": 0,
+              "text": "四、拟解决的关键问题\n\n\n\n\n\n\n\n\n\n\n五、研究思路和方法\n\n\n\n\n\n\n\n\n\n\n",
+              "paragraphs": [
+                {
+                  "style": "Normal",
+                  "text": "四、拟解决的关键问题",
+                  "runs": [
+                    {
+                      "text": "四、",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "拟",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "解决的",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "关键",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "问题",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    }
+                  ]
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "五、研究思路和方法",
+                  "runs": [
+                    {
+                      "text": "五、",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "研究思路和方法",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    }
+                  ]
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 7,
+          "cells": [
+            {
+              "index": 0,
+              "text": "六、本课题的进度安排\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+              "paragraphs": [
+                {
+                  "style": "Normal",
+                  "text": "六、本课题的进度安排",
+                  "runs": [
+                    {
+                      "text": "六、",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "本课题的进度安排",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    }
+                  ]
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 8,
+          "cells": [
+            {
+              "index": 0,
+              "text": "七、参考文献\n\n\n\n\n\n\n\n\n\n\n\n八、指导教师意见\n\n\n\n签名\n年        月        日\n",
+              "paragraphs": [
+                {
+                  "style": "Normal",
+                  "text": "七、参考文献",
+                  "runs": [
+                    {
+                      "text": "七",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "、",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "参考文献",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": 12.0,
+                      "font": "宋体"
+                    }
+                  ]
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "八、指导教师意见",
+                  "runs": [
+                    {
+                      "text": "八",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": null,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "、指导教师意见",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": null,
+                      "font": "宋体"
+                    }
+                  ]
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "签名",
+                  "runs": [
+                    {
+                      "text": "签名",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": null,
+                      "font": "宋体"
+                    }
+                  ]
+                },
+                {
+                  "style": "Normal",
+                  "text": "年        月        日",
+                  "runs": [
+                    {
+                      "text": "年        月        日",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": null,
+                      "font": "宋体"
+                    }
+                  ]
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "index": 9,
+          "cells": [
+            {
+              "index": 0,
+              "text": "九、学院审核意见\n\n\n\n                                                教研室主任签名：\n教学院长签名：\n年        月        日\n",
+              "paragraphs": [
+                {
+                  "style": "Normal",
+                  "text": "九、学院审核意见",
+                  "runs": [
+                    {
+                      "text": "九、",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": null,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "学院审核意见",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": null,
+                      "font": "宋体"
+                    }
+                  ]
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                },
+                {
+                  "style": "Normal",
+                  "text": "                                                教研室主任签名：",
+                  "runs": [
+                    {
+                      "text": " ",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": null,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "                                               ",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": null,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "教研室主任签名：",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": null,
+                      "font": "宋体"
+                    }
+                  ]
+                },
+                {
+                  "style": "Normal",
+                  "text": "教学院长签名：",
+                  "runs": [
+                    {
+                      "text": "教学院长签名",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": null,
+                      "font": "宋体"
+                    },
+                    {
+                      "text": "：",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": null,
+                      "font": "宋体"
+                    }
+                  ]
+                },
+                {
+                  "style": "Normal",
+                  "text": "年        月        日",
+                  "runs": [
+                    {
+                      "text": "年        月        日",
+                      "bold": null,
+                      "italic": null,
+                      "size_pt": null,
+                      "font": "宋体"
+                    }
+                  ]
+                },
+                {
+                  "style": "Normal",
+                  "text": "",
+                  "runs": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "style": "Normal Table"
+    }
+  ],
+  "sections": [
+    {
+      "index": 0,
+      "width": 7560310,
+      "height": 10692130,
+      "top_margin": 914400,
+      "bottom_margin": 914400,
+      "left_margin": 1143000,
+      "right_margin": 1143000,
+      "header_text": "",
+      "footer_text": ""
+    }
+  ],
+  "inline_shapes": 1,
+  "package_parts": [
+    "[Content_Types].xml",
+    "_rels/.rels",
+    "customXml/_rels/item1.xml.rels",
+    "customXml/item1.xml",
+    "customXml/itemProps1.xml",
+    "docProps/app.xml",
+    "docProps/core.xml",
+    "docProps/custom.xml",
+    "word/_rels/document.xml.rels",
+    "word/document.xml",
+    "word/endnotes.xml",
+    "word/fontTable.xml",
+    "word/footnotes.xml",
+    "word/media/image1.jpeg",
+    "word/numbering.xml",
+    "word/settings.xml",
+    "word/styles.xml",
+    "word/theme/theme1.xml",
+    "word/webSettings.xml"
+  ]
+}
