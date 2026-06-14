@@ -40,6 +40,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
+/**
+ * [SEARCH:MISTAKE_REVIEW] 错题录入、分类、知识关联和复习闭环服务。
+ *
+ * <p>错题可以包含文本、附件、状态和学科标签，并通过关联 {@link KnowledgeChunk}
+ * 将练习结果回写到知识画像。</p>
+ */
 public class MistakeService {
     private static final String MASTERED_STATUS_NAME = "完全掌握";
     private static final String DEFAULT_UNMASTERED_STATUS_NAME = "未掌握";
@@ -181,6 +187,7 @@ public class MistakeService {
     }
 
     @Transactional(readOnly = true)
+    // [SEARCH:MISTAKE_PRACTICE_SELECTION] 按学科范围抽取未掌握错题，组成一次复习题组。
     public List<MistakeResponse> practice(Long userId, int count, List<Long> subjectTagIds) {
         int normalizedCount = Math.max(1, Math.min(count, 100));
         List<Long> normalizedSubjectTagIds = normalizeIds(subjectTagIds);
@@ -191,6 +198,7 @@ public class MistakeService {
     }
 
     @Transactional
+    // [SEARCH:MISTAKE_CREATE] 保存题干、解析、附件、状态、学科标签及关联知识片段。
     public MistakeResponse create(Long userId,
                                   String questionText,
                                   MultipartFile questionAttachmentFile,
@@ -258,6 +266,7 @@ public class MistakeService {
     }
 
     @Transactional
+    // [SEARCH:MISTAKE_FROM_TEACHER] 将定制练题结果直接沉淀为错题并保留来源片段。
     public MistakeResponse createFromTeacher(Long userId,
                                              Long chunkId,
                                              String questionText,
@@ -284,6 +293,7 @@ public class MistakeService {
     }
 
     @Transactional
+    // [SEARCH:MISTAKE_RESULT_FEEDBACK] 记录错题作答结果，并同步更新所有关联片段的掌握指标。
     public PracticeResultResponse recordPracticeResult(Long mistakeId, Long userId, boolean correct) {
         MistakeQuestion mistake = requireMistake(mistakeId, userId);
         MistakePracticeEvent event = new MistakePracticeEvent();
@@ -479,6 +489,12 @@ public class MistakeService {
         mistakeChunkRepository.save(link);
     }
 
+    /**
+     * [SEARCH:MISTAKE_CHUNK_LINK] 同步错题与知识片段的关联集合。
+     *
+     * <p>自动或教师来源的新关联可按业务规则记为一次错误反馈，
+     * 使错题录入立即反映到知识画像。</p>
+     */
     private void applyLinkedChunks(MistakeQuestion mistake,
                                    Long userId,
                                    List<Long> chunkIds,

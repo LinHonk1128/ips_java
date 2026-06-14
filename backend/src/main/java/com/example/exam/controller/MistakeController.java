@@ -37,6 +37,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api")
+// [SEARCH:API_MISTAKES] 错题状态、录入、附件、复习和结果回写接口入口。
 public class MistakeController {
     private final MistakeService mistakeService;
     private final CurrentUserService currentUserService;

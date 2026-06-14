@@ -48,8 +48,15 @@ import {
 } from 'lucide-vue-next'
 import { aiSettingsApi, authApi, chatApi, clearSession, fileApi, folderApi, getSession, getToken, knowledgeProfileApi, mistakeApi, setSession, studyPlanApi, studyProfileApi } from '../api/client'
 
+/**
+ * [SEARCH:FRONTEND_APP_CONTEXT] 前端应用级状态与业务动作入口。
+ *
+ * 页面组件通过 appContext 共享这里返回的状态和方法；网络请求、跨页面跳转、
+ * 本地缓存以及图表生命周期也统一在此协调。
+ */
 export function useSmartExamApp() {
 
+// [SEARCH:FRONTEND_AUTH_STATE] 登录会话、首次引导和个人备考设置。
 const session = ref(getSession())
 const authMode = ref('login')
 const authForm = reactive({ username: '', password: '', displayName: '' })
@@ -70,6 +77,8 @@ const personalSettingsForm = reactive({
   examDate: '',
   subjects: ['']
 })
+
+// [SEARCH:FRONTEND_LIBRARY_STATE] 目录、文件、编辑器分页及文件移动状态。
 const uploadTag = ref('NOTE')
 const fileInput = ref(null)
 const editorElement = ref(null)
@@ -97,6 +106,8 @@ const fileNameInput = ref(null)
 const moveFileTargetId = ref('')
 const rootFolderCollapsed = ref(false)
 const collapsedFolderIds = ref(new Set())
+
+// [SEARCH:FRONTEND_PLAN_STATE] 学习规划、AI 草稿预览和撤销栈。
 const studyPlanItems = ref([])
 const homePlanItems = ref([])
 const planDraftItems = ref([])
@@ -158,6 +169,8 @@ const planForm = reactive({
   priority: 'MEDIUM',
   status: 'TODO'
 })
+
+// [SEARCH:FRONTEND_MISTAKE_STATE] 错题录入、知识片段关联、附件预览和复习会话。
 const mistakes = ref([])
 const mistakeStatuses = ref([])
 const mistakeSubjectTags = ref([])
@@ -206,6 +219,8 @@ const solutionPreviewUrls = ref({})
 const questionPreviewUrls = ref({})
 const attachmentPreviewUrls = ref({})
 const mistakeModule = ref('')
+
+// [SEARCH:FRONTEND_CHAT_STATE] 问答模式、教师出题、来源片段和用户模型设置。
 const legacyDefaultSystemPrompt = '优先依据当前知识库回答；给出可追溯依据；如果资料不足，明确说明无法从知识库确认。'
 const defaultAiSettings = {
   aiRole: '严谨的考研答疑老师',
@@ -954,6 +969,7 @@ function setActivePage(page) {
   }
 }
 
+// [SEARCH:FRONTEND_KNOWLEDGE_NAVIGATION] 在资料管理、编辑器和知识问答子模块之间切换。
 function openKnowledgeModule(module) {
   activePage.value = 'knowledge'
   knowledgeModule.value = module
@@ -978,6 +994,7 @@ onUnmounted(() => {
   disposeProfileCharts()
 })
 
+// [SEARCH:FRONTEND_AUTH_SUBMIT] 提交注册或登录，并在成功后加载用户工作区。
 async function submitAuth() {
   await run(async () => {
     const action = authMode.value === 'login' ? authApi.login : authApi.register
@@ -1028,6 +1045,7 @@ function removePersonalSubject(index) {
   personalSettingsForm.subjects.splice(index, 1)
 }
 
+// [SEARCH:FRONTEND_PROFILE_SETTINGS_SAVE] 保存考试日期与科目，并刷新依赖这些数据的页面。
 async function savePersonalSettings() {
   if (!canSavePersonalSettings.value) return
   await run(async () => {
@@ -1055,6 +1073,7 @@ function syncOnboardingSubjects() {
   }
 }
 
+// [SEARCH:FRONTEND_ONBOARDING] 首次进入系统时创建备考档案和学科目录。
 async function submitOnboarding() {
   if (!canSubmitOnboarding.value) return
   await run(async () => {
@@ -1068,6 +1087,7 @@ async function submitOnboarding() {
   })
 }
 
+// [SEARCH:FRONTEND_PLAN_LOAD] 加载当前周真实计划，并初始化可编辑草稿。
 async function loadStudyPlan() {
   await run(async () => {
     const items = await studyPlanApi.list(planWeekStart.value, planWeekEnd.value)
@@ -1350,6 +1370,7 @@ function clearPlanAiChat() {
   persistPlanSession()
 }
 
+// [SEARCH:FRONTEND_PLAN_AI_CHAT] 发送规划对话，并把模型建议转换为待确认操作。
 async function sendPlanAiMessage() {
   const content = planAiInput.value.trim()
   if (!content || planAiLoading.value || planGenerateLoading.value || planSaveLoading.value) return
@@ -1405,6 +1426,7 @@ function operationForApply(operation) {
   }
 }
 
+// [SEARCH:FRONTEND_PLAN_APPLY] 将预览草稿与真实计划的差异提交给后端。
 async function savePlanAiDraft() {
   if (!planPendingOperations.value.length || planSaveLoading.value) return
   planSaveLoading.value = true
@@ -1499,6 +1521,7 @@ function backToMistakeMenu() {
   mistakeModule.value = ''
 }
 
+// [SEARCH:FRONTEND_MISTAKE_SAVE] 汇总文本、图片、状态、学科和片段关联后保存错题。
 async function saveMistake() {
   const status = selectedMistakeStatus()
   const payload = {
@@ -1532,6 +1555,7 @@ function setUnmasteredStatus() {
   }
 }
 
+// [SEARCH:FRONTEND_MISTAKE_CHUNK_SEARCH] 按题干或关键词搜索可关联的知识片段。
 async function searchMistakeChunks() {
   mistakeChunkSearchLoading.value = true
   await run(async () => {
@@ -1807,6 +1831,7 @@ async function deleteMistake(mistake) {
   })
 }
 
+// [SEARCH:FRONTEND_MISTAKE_PRACTICE] 创建错题复习会话并初始化计时状态。
 async function startPractice() {
   await run(async () => {
     practiceQuestions.value = await mistakeApi.practice(practiceForm.count, practiceForm.subjectTagIds)
@@ -1858,6 +1883,7 @@ function practiceResultFor(question) {
   return question?.id ? practiceResults.value[question.id] : null
 }
 
+// [SEARCH:FRONTEND_MISTAKE_RESULT] 提交单题结果，随后更新本地错题状态和知识画像数据。
 async function recordPracticeResult(question, correct) {
   if (!question?.id || practiceResultFor(question)) return
   await run(async () => {
@@ -1941,6 +1967,7 @@ function revokeSolutionPreview(mistakeId) {
   solutionPreviewUrls.value = next
 }
 
+// [SEARCH:FRONTEND_FOLDER_LOAD] 加载目录树，并保持当前选中目录的有效性。
 async function loadFolders() {
   await run(async () => {
     folders.value = await folderApi.list()
@@ -2105,6 +2132,7 @@ function useCurrentFolderAsKnowledgeBase() {
   activeSource.value = null
 }
 
+// [SEARCH:FRONTEND_FOLDER_SELECT] 切换知识范围，同时刷新文件列表和该目录的问答历史。
 async function selectFolder(folder) {
   activeFolder.value = folder
   activeFile.value = null
@@ -2117,6 +2145,7 @@ async function selectFolder(folder) {
   cancelFileNameEdit()
 }
 
+// [SEARCH:FRONTEND_FILE_SELECT] 选中文件并把抽取正文拆成编辑器分页。
 function selectFile(file) {
   cancelFileNameEdit()
   activeFile.value = { ...file }
@@ -2369,6 +2398,7 @@ function escapeHtml(text = '') {
     .replace(/"/g, '&quot;')
 }
 
+// [SEARCH:FRONTEND_FILE_UPLOAD] 上传文件后刷新目录内容并打开新文件。
 async function uploadFile() {
   const selected = fileInput.value?.files?.[0]
   if (!selected || !activeFolder.value) return
@@ -2382,6 +2412,7 @@ async function uploadFile() {
   })
 }
 
+// [SEARCH:FRONTEND_FILE_SAVE] 合并编辑器分页并保存正文，后端会据此重建知识片段。
 async function saveFileText() {
   if (!activeFile.value) return
   syncEditorContent()
@@ -2451,6 +2482,7 @@ function chatHistoryPayload() {
     }))
 }
 
+// [SEARCH:FRONTEND_CHAT_ASK] 创建用户消息并消费后端 SSE 问答事件。
 async function ask() {
   const question = chatForm.question.trim()
   if (chatForm.mode === 'TEACHER') {
@@ -2528,6 +2560,7 @@ async function requestTeacherQuestion(resetAsked = false) {
   chatLoading.value = false
 }
 
+// [SEARCH:FRONTEND_TEACHER_QUESTION] 请求下一道基于当前知识库的定制练习题。
 async function nextTeacherQuestion() {
   await requestTeacherQuestion(false)
 }
@@ -2551,6 +2584,7 @@ async function addTeacherMessageToMistake(message) {
   })
 }
 
+// [SEARCH:FRONTEND_SOURCE_FEEDBACK] 将用户对引用片段的反馈回写到知识画像。
 async function feedbackActiveSource(type) {
   const source = activeSource.value
   if (!source?.chunkId || source.feedbackType || source.feedbackPending) return
@@ -2584,6 +2618,7 @@ function updateSourceStats(chunkId, updated) {
   })
 }
 
+// [SEARCH:FRONTEND_CHAT_NOTE] 把当前对话整理成资料笔记并加入知识库。
 async function createNoteFromConversation() {
   if (!activeFolder.value || !currentChatHasMessages.value || noteLoading.value) return
   noteLoading.value = true
@@ -2918,6 +2953,7 @@ function openTeacherForWeakChunk(chunk) {
   chatForm.question = teacherState.requirement
 }
 
+// [SEARCH:FRONTEND_WEAK_CHUNK_JUMP] 从画像弱项跳转到原文件并定位对应摘录。
 async function openWeakChunkInEditor(chunk) {
   if (!chunk?.fileId) return
   await run(async () => {
@@ -2988,6 +3024,7 @@ async function saveFileName() {
   savingFileName.value = false
 }
 
+// [SEARCH:FRONTEND_SOURCE_JUMP] 从问答引用跳转到原文件页码并高亮来源文本。
 async function openSourceFile(source) {
   if (!source) return
   await run(async () => {
@@ -3265,6 +3302,7 @@ async function deleteAiPreset() {
   await run(persistRemoteAiSettingPresets)
 }
 
+// [SEARCH:FRONTEND_AI_SETTINGS_LOAD] 合并服务端设置、本地预设和兼容旧版本的缓存数据。
 async function loadRemoteAiSettings() {
   await run(async () => {
     const [remote, remotePresets] = await Promise.all([
@@ -3281,6 +3319,7 @@ async function loadRemoteAiSettings() {
   })
 }
 
+// [SEARCH:FRONTEND_PROFILE_LOAD] 并行加载画像卡片、趋势、分布、活动和风险图表数据。
 async function loadKnowledgeProfile() {
   if (!session.value || !studyProfile.value?.onboarded) return
   profileLoading.value = true
@@ -3361,6 +3400,7 @@ function ensureDailyProfileDiagnosis() {
   loadProfileDiagnosis({ force: true })
 }
 
+// [SEARCH:FRONTEND_PROFILE_DIAGNOSIS] 优先使用当日缓存，必要时刷新规则诊断或 AI 建议。
 async function loadProfileDiagnosis({ force = false, refreshAi = false } = {}) {
   if (!session.value || !studyProfile.value?.onboarded || profileDiagnosisLoading.value) return
   const days = profileTrendDays.value
@@ -3445,6 +3485,7 @@ async function addSuggestionToPlan(suggestion) {
   })
 }
 
+// [SEARCH:FRONTEND_AI_SETTINGS_SAVE] 保存模型配置并同步本地运行时状态。
 async function saveAiSettings() {
   await run(async () => {
     const saved = await aiSettingsApi.save(normalizeAiSettings(aiSettings))

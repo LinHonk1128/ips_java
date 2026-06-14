@@ -4,6 +4,11 @@ import jakarta.persistence.*;
 import java.time.Instant;
 
 @Entity
+/**
+ * [SEARCH:ENTITY_KNOWLEDGE_CHUNK] 可检索、可统计的最小知识单元。
+ *
+ * <p>片段由资料正文切分而来，同时承载问答引用、练习反馈和知识画像所需的累计指标。</p>
+ */
 public class KnowledgeChunk {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -16,14 +21,17 @@ public class KnowledgeChunk {
     private StudyFolder folder;
 
     @Column(nullable = false)
+    // 同一文件内的稳定顺序，用于恢复原文上下文和展示引用位置。
     private int chunkIndex;
 
     @Column(nullable = false, columnDefinition = "integer default 1")
     private int pageNumber = 1;
 
     @Column(nullable = false, columnDefinition = "integer default 1")
+    // 生成该片段时使用的切片算法版本，启动回填据此判断是否需要重建。
     private int chunkingVersion = 1;
 
+    // [SEARCH:ENTITY_CHUNK_MASTERY_FIELDS] 片段掌握度的累计事实字段。
     @Column(nullable = false, columnDefinition = "integer default 0")
     private int correctHitCount = 0;
 
@@ -131,6 +139,7 @@ public class KnowledgeChunk {
         return correctHitCount + wrongHitCount;
     }
 
+    // 使用平滑先验避免零反馈片段直接得到 0% 或 100% 的极端掌握度。
     public double getMasteryRate() {
         return (correctHitCount + 2.5) / (correctHitCount + 1.2 * wrongHitCount + 5.0);
     }

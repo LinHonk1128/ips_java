@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_WORKSPACE_LAYOUT] 登录后的工作区骨架，提供主导航、目录侧栏和页面出口。 -->
 <template>
 <section class="workspace">
       <aside class="sidebar">

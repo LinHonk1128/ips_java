@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_HOME] 首页，展示考试倒计时和当前时间段的学习任务。 -->
 <template>
 <section class="page-panel home-page">
           <div class="home-hero">

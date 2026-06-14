@@ -4,6 +4,11 @@ import jakarta.persistence.*;
 
 @Entity
 @Table(name = "user_ai_settings")
+/**
+ * [SEARCH:ENTITY_AI_SETTINGS] 用户私有的模型调用配置。
+ *
+ * <p>聊天模型与向量模型可以使用不同端点和密钥；预设以 JSON 保存以支持快速切换配置。</p>
+ */
 public class UserAiSettings {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -39,6 +44,7 @@ public class UserAiSettings {
     private String embeddingApiKey;
 
     @Column(nullable = false)
+    // 必须与外部向量模型和 Elasticsearch 索引映射保持一致。
     private int embeddingDimensions = 1536;
 
     @Lob

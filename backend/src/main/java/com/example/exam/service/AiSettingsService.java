@@ -20,6 +20,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+/**
+ * [SEARCH:AI_SETTINGS] 用户级模型配置服务。
+ *
+ * <p>保存聊天与向量模型参数、系统提示词和预设，并为单次请求合并临时覆盖值。</p>
+ */
 public class AiSettingsService {
     public static final String DEFAULT_AI_ROLE = "严谨的考研答疑老师";
     public static final String DEFAULT_SYSTEM_PROMPT = """
@@ -109,6 +114,7 @@ public class AiSettingsService {
         return presets;
     }
 
+    // [SEARCH:AI_SETTINGS_MERGE] 合并数据库配置和请求级覆盖参数，形成一次调用的有效配置。
     public AiSettingsResponse merge(Long userId,
                                     String aiRole,
                                     String systemPrompt,
@@ -133,6 +139,7 @@ public class AiSettingsService {
         );
     }
 
+    // [SEARCH:AI_SETTINGS_EFFECTIVE] 返回补齐默认值后的有效配置，供模型调用层直接使用。
     public AiSettingsResponse effective(Long userId) {
         AiSettingsResponse saved = get(userId);
         return new AiSettingsResponse(

@@ -4,6 +4,11 @@ import jakarta.persistence.*;
 import java.time.Instant;
 
 @Entity
+/**
+ * [SEARCH:ENTITY_STUDY_FILE] 用户上传或创建的一份学习资料。
+ *
+ * <p>保存原文件元数据和可编辑的抽取正文；开启知识库后，正文会派生为多个知识片段。</p>
+ */
 public class StudyFile {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -27,9 +32,11 @@ public class StudyFile {
 
     @Lob
     @Column(columnDefinition = "TEXT")
+    // PDF、Word、OCR 或编辑器产生的统一正文，是重新切片时的输入。
     private String extractedText;
 
     @Column(nullable = false, columnDefinition = "boolean default true")
+    // 关闭后文件仍保留，但对应知识片段和检索索引会被移除。
     private boolean knowledgeEnabled = true;
 
     @Column(nullable = false)

@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/study-plan")
+// [SEARCH:API_STUDY_PLAN] 手工计划、AI 规划讨论、草稿生成和应用接口入口。
 public class StudyPlanController {
     private final StudyPlanService studyPlanService;
     private final StudyPlanAiService studyPlanAiService;

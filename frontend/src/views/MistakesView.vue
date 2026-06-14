@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_MISTAKES] 错题模块路由容器，根据子模块状态切换录入、浏览和复习页面。 -->
 <template>
   <section class="page-panel mistakes-page">
     <MistakeModuleLanding v-if="!mistakeModule" />

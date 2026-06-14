@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_AUTH] 登录与注册页面；表单状态和提交逻辑由应用上下文统一管理。 -->
 <template>
 <section class="auth-panel" aria-label="登录">
       <div class="auth-copy">

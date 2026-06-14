@@ -4,6 +4,11 @@ import jakarta.persistence.*;
 import java.time.Instant;
 
 @Entity
+/**
+ * [SEARCH:ENTITY_STUDY_FOLDER] 用户知识库中的目录节点。
+ *
+ * <p>普通目录组织资料；顶层学科目录还承担画像按科目聚合和错题标签同步的职责。</p>
+ */
 public class StudyFolder {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,6 +31,7 @@ public class StudyFolder {
     private int depth = 1;
 
     @Column(nullable = false, columnDefinition = "boolean default false")
+    // 标记该顶层目录是否来自用户的备考科目配置。
     private boolean subjectFolder = false;
 
     @Column(nullable = false, columnDefinition = "integer default 0")

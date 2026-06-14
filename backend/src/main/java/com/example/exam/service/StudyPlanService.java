@@ -16,6 +16,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+/**
+ * [SEARCH:STUDY_PLAN] 学习日程的持久化业务服务。
+ *
+ * <p>负责按用户和日期范围查询日程，并区分手工、画像建议和 AI 生成的计划来源。</p>
+ */
 public class StudyPlanService {
     private final StudyPlanItemRepository planRepository;
 
@@ -24,6 +29,7 @@ public class StudyPlanService {
     }
 
     @Transactional(readOnly = true)
+    // [SEARCH:STUDY_PLAN_LIST] 查询指定日期区间内的用户日程。
     public List<StudyPlanItemResponse> list(Long userId, LocalDate from, LocalDate to) {
         LocalDate[] range = normalizeRange(from, to);
         return listEntities(userId, range[0], range[1]).stream()
@@ -32,6 +38,7 @@ public class StudyPlanService {
     }
 
     @Transactional
+    // [SEARCH:STUDY_PLAN_CREATE] 创建用户手工维护的学习计划项。
     public StudyPlanItemResponse create(User user, StudyPlanItemRequest request) {
         StudyPlanItem item = new StudyPlanItem();
         item.setOwner(user);

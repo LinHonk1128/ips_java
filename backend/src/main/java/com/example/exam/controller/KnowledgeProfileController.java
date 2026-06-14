@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/knowledge-profile")
+// [SEARCH:API_KNOWLEDGE_PROFILE] 知识画像指标、风险、诊断和片段搜索接口入口。
 public class KnowledgeProfileController {
     private final KnowledgeProfileService knowledgeProfileService;
     private final CurrentUserService currentUserService;

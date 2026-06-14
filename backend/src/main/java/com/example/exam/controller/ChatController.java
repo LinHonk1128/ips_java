@@ -26,6 +26,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @RestController
 @RequestMapping("/api/chat")
+// [SEARCH:API_CHAT] 同步/流式问答、教师出题、片段反馈和对话笔记接口入口。
 public class ChatController {
     private static final DateTimeFormatter NOTE_NAME_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
 

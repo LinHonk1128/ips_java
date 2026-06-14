@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_MISTAKE_UPLOAD] 错题录入面板，维护题干、解析、图片、状态和知识片段关联。 -->
 <template>
 <div class="mistake-grid">
             <form class="mistake-form" @submit.prevent="saveMistake">

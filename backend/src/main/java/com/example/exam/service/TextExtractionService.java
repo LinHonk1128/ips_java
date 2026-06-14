@@ -25,6 +25,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
+/**
+ * [SEARCH:TEXT_EXTRACTION] 上传资料的文本抽取入口。
+ *
+ * <p>根据文件类型选择 PDF、Word、纯文本或图片 OCR 处理，并把可编辑内容统一转换为文本/HTML。</p>
+ */
 public class TextExtractionService {
     private final String tesseractCommand;
     private final long zipMaxFileCount;
@@ -45,6 +50,7 @@ public class TextExtractionService {
         this.zipMinInflateRatio = zipMinInflateRatio;
     }
 
+    // [SEARCH:TEXT_EXTRACTION_DISPATCH] 按扩展名和 MIME 类型分派具体抽取器。
     public String extract(Path path, String originalName, String contentType) {
         String lower = originalName.toLowerCase(Locale.ROOT);
         try {
@@ -181,6 +187,7 @@ public class TextExtractionService {
                 .replace("\"", "&quot;");
     }
 
+    // [SEARCH:IMAGE_OCR] 调用本机 Tesseract 识别图片文字，并处理临时文件和进程输出。
     private String extractImageWithOcr(Path path) throws IOException, InterruptedException {
         Path outputBase = Files.createTempFile("smart-exam-ocr", "");
         Files.deleteIfExists(outputBase);

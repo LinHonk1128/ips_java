@@ -25,6 +25,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
+/**
+ * [SEARCH:ELASTICSEARCH_INDEX] 知识片段检索索引适配层。
+ *
+ * <p>负责索引初始化、文件级重建、删除以及关键词/向量检索；数据库实体仍是权威数据源。</p>
+ */
 public class ElasticsearchService {
     private static final Logger log = LoggerFactory.getLogger(ElasticsearchService.class);
     private static final int CANDIDATE_SIZE = 20;
@@ -54,6 +59,7 @@ public class ElasticsearchService {
         this.enabled = enabled;
     }
 
+    // [SEARCH:ELASTICSEARCH_REINDEX] 删除旧文档后，为文件的全部片段重新写入检索索引。
     public void reindexFile(Long userId, StudyFile file, List<KnowledgeChunk> chunks, AiSettingsResponse settings) {
         if (!enabled) return;
         IndexedFile fileSnapshot = new IndexedFile(
@@ -117,6 +123,7 @@ public class ElasticsearchService {
         }
     }
 
+    // [SEARCH:ELASTICSEARCH_SEARCH] 并行执行关键词和向量检索，再用倒数排名融合结果。
     public List<Long> hybridSearch(Long userId, List<Long> folderIds, String question, AiSettingsResponse settings) {
         if (!enabled || folderIds.isEmpty() || isTemporarilyUnavailable()) return List.of();
         try {

@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/auth")
+// [SEARCH:API_AUTH] 注册和登录接口入口，具体认证规则见 AuthService。
 public class AuthController {
     private final AuthService authService;
 

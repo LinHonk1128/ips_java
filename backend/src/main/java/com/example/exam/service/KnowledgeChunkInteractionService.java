@@ -15,6 +15,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+/**
+ * [SEARCH:CHUNK_INTERACTION] 知识片段行为回写服务。
+ *
+ * <p>集中处理引用、答题反馈和错题练习事件，确保片段累计指标与事件明细同步更新。</p>
+ */
 public class KnowledgeChunkInteractionService {
     private final KnowledgeChunkRepository chunkRepository;
     private final KnowledgeChunkEventRepository eventRepository;
@@ -26,6 +31,7 @@ public class KnowledgeChunkInteractionService {
     }
 
     @Transactional
+    // [SEARCH:CHUNK_CITATION] 记录答案实际展示的引用来源，并更新片段最近访问时间。
     public List<Source> recordCitations(Long userId, List<Source> sources) {
         if (sources == null || sources.isEmpty()) {
             return List.of();
@@ -43,6 +49,7 @@ public class KnowledgeChunkInteractionService {
     }
 
     @Transactional
+    // [SEARCH:CHUNK_FEEDBACK] 将“很清晰/忘记了”反馈转换为片段掌握指标和事件。
     public ChunkFeedbackResponse recordFeedback(Long userId, Long chunkId, ChunkFeedbackType type) {
         KnowledgeChunk chunk = requireOwnedChunk(chunkId, userId);
         Instant now = Instant.now();
@@ -60,6 +67,7 @@ public class KnowledgeChunkInteractionService {
     }
 
     @Transactional
+    // [SEARCH:CHUNK_PRACTICE_RESULT] 把一次练习结果批量回写到去重后的关联片段。
     public int recordPracticeResult(Long userId, Collection<Long> chunkIds, boolean correct) {
         if (chunkIds == null || chunkIds.isEmpty()) {
             return 0;

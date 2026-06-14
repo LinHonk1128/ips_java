@@ -10,6 +10,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+/**
+ * [SEARCH:AUTH] 用户注册与登录服务。
+ *
+ * <p>密码只保存哈希值，认证成功后由 JWT 服务签发前端会话令牌。</p>
+ */
 public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -22,6 +27,7 @@ public class AuthService {
     }
 
     @Transactional
+    // [SEARCH:AUTH_REGISTER] 创建账号并直接返回登录态。
     public AuthResponse register(AuthRequest request) {
         if (userRepository.existsByUsername(request.username())) {
             throw new IllegalArgumentException("Username already exists");
@@ -36,6 +42,7 @@ public class AuthService {
         return response(user);
     }
 
+    // [SEARCH:AUTH_LOGIN] 校验账号密码并签发 JWT。
     public AuthResponse login(AuthRequest request) {
         User user = userRepository.findByUsername(request.username())
                 .orElseThrow(() -> new IllegalArgumentException("Invalid username or password"));

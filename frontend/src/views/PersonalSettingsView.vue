@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_PERSONAL_SETTINGS] 个人备考设置页面，维护考试日期和学科列表。 -->
 <template>
 <section class="page-panel settings-page personal-settings-page">
           <form class="settings-form" @submit.prevent="savePersonalSettings">

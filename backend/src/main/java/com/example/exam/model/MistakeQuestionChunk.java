@@ -8,6 +8,11 @@ import java.time.Instant;
         name = "mistake_question_chunk",
         uniqueConstraints = @UniqueConstraint(columnNames = {"mistake_id", "chunk_id"})
 )
+/**
+ * [SEARCH:ENTITY_MISTAKE_CHUNK_LINK] 错题与知识片段的多对多关联实体。
+ *
+ * <p>除关联本身外，还记录手工选择或教师出题等来源，便于决定是否触发画像反馈。</p>
+ */
 public class MistakeQuestionChunk {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,6 +28,7 @@ public class MistakeQuestionChunk {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 24)
+    // 来源决定该关联是用户明确选择，还是由练题流程自动建立。
     private MistakeQuestionChunkSourceType sourceType = MistakeQuestionChunkSourceType.MANUAL;
 
     @Column(nullable = false)

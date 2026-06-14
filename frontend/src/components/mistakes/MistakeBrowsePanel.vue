@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_MISTAKE_BROWSE] 错题浏览面板，支持筛选、分页、状态修改和原知识片段跳转。 -->
 <template>
 <div class="mistake-browser">
             <div class="section-head split">

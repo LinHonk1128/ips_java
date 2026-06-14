@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/folders")
+// [SEARCH:API_FOLDERS] 知识库目录树的查询和维护接口入口。
 public class FolderController {
     private final FolderService folderService;
     private final CurrentUserService currentUserService;

@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_CHAT] 知识问答页面，展示流式回答、引用来源、练题模式和对话历史。 -->
 <template>
 <section class="page-panel chat-page">
           <div class="qa-toolbar">

@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_ONBOARDING] 首次备考设置页面，用于录入考试日期和初始化学科目录。 -->
 <template>
 <section class="auth-panel onboarding-panel" aria-label="学习信息初始化">
       <div class="auth-copy">

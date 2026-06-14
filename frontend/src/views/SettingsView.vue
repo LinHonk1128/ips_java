@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_AI_SETTINGS] AI 配置页面，维护聊天模型、向量模型及配置预设。 -->
 <template>
 <section class="page-panel settings-page">
           <div class="settings-layout">

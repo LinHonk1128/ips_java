@@ -21,6 +21,11 @@ import java.time.LocalTime;
         @Index(name = "idx_study_plan_owner_date", columnList = "owner_id,start_date"),
         @Index(name = "idx_study_plan_owner_status", columnList = "owner_id,status")
 })
+/**
+ * [SEARCH:ENTITY_STUDY_PLAN_ITEM] 日历中的一项学习安排。
+ *
+ * <p>包含日期、时间、优先级和完成状态；source 用于区分手工、AI 或画像建议产生的任务。</p>
+ */
 public class StudyPlanItem {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -64,6 +69,7 @@ public class StudyPlanItem {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
+    // 记录计划的生成来源，便于前端展示以及后续评估建议采纳情况。
     private StudyPlanSource source = StudyPlanSource.MANUAL;
 
     @Column(nullable = false)

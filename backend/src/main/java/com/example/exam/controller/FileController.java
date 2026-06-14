@@ -26,6 +26,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api")
+// [SEARCH:API_FILES] 文件上传、正文保存、知识库启停、移动和删除接口入口。
 public class FileController {
     private final FileService fileService;
     private final CurrentUserService currentUserService;

@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_EDITOR] 资料编辑页面，支持分页编辑、格式化、上传和正文保存。 -->
 <template>
 <section class="page-panel editor-page">
           <form class="upload-strip" @submit.prevent="uploadFile">

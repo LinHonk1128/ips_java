@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/study-profile")
+// [SEARCH:API_STUDY_PROFILE] 备考档案、首次引导和个人设置接口入口。
 public class StudyProfileController {
     private final StudyProfileService studyProfileService;
     private final CurrentUserService currentUserService;

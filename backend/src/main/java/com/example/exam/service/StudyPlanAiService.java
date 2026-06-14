@@ -43,6 +43,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+/**
+ * [SEARCH:STUDY_PLAN_AI] AI 学习规划编排服务。
+ *
+ * <p>把现有日程和知识画像诊断作为模型上下文，先生成可预览的结构化操作，
+ * 只有用户确认后才把新增、修改和删除写入真实日程。</p>
+ */
 public class StudyPlanAiService {
     private static final Logger log = LoggerFactory.getLogger(StudyPlanAiService.class);
     private static final int PLANNING_MAX_TOKENS = 2400;
@@ -63,6 +69,7 @@ public class StudyPlanAiService {
     }
 
     @Transactional(readOnly = true)
+    // [SEARCH:STUDY_PLAN_AI_CHAT] 在当前周计划和画像诊断上下文中进行规划讨论。
     public StudyPlanAiChatResponse chat(Long userId, StudyPlanAiChatRequest request) {
         List<StudyPlanItem> items = studyPlanService.listEntities(userId, request.fromDate(), request.toDate());
         var settings = mergedSettings(userId, request);
@@ -78,6 +85,7 @@ public class StudyPlanAiService {
     }
 
     @Transactional(readOnly = true)
+    // [SEARCH:STUDY_PLAN_GENERATE] 解析模型返回的结构化操作，仅生成草稿预览，不写数据库。
     public StudyPlanGenerateResponse generate(Long userId, User user, StudyPlanGenerateRequest request) {
         List<StudyPlanItem> before = studyPlanService.listEntities(userId, request.fromDate(), request.toDate());
         var settings = mergedSettings(userId, request);
@@ -102,6 +110,7 @@ public class StudyPlanAiService {
     }
 
     @Transactional
+    // [SEARCH:STUDY_PLAN_APPLY] 将用户确认的规划操作逐项应用到真实日程。
     public StudyPlanGenerateResponse apply(Long userId, User user, StudyPlanApplyRequest request) {
         List<StudyPlanOperationResponse> operations = new ArrayList<>();
         for (StudyPlanOperationRequest operation : request.operations()) {
@@ -155,6 +164,7 @@ public class StudyPlanAiService {
         );
     }
 
+    // [SEARCH:STUDY_PLAN_PARSE] 校验模型输出必须包含可解析的 actions 数组。
     private ParsedPlan parsePlan(String raw) {
         try {
             JsonNode root = mapper.readTree(extractJson(raw));

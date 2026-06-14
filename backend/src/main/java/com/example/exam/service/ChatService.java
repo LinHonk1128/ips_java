@@ -41,6 +41,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 @Service
+/**
+ * [SEARCH:CHAT_QA] 智能问答与定制练题核心服务。
+ *
+ * <p>统一处理知识库范围校验、混合检索、候选重排、提示词构建、模型调用、
+ * 引用来源回写和 SSE 流式输出。</p>
+ */
 public class ChatService {
     private static final Logger log = LoggerFactory.getLogger(ChatService.class);
     private static final int MAX_RETRIEVED_CHUNKS = 5;
@@ -76,6 +82,7 @@ public class ChatService {
     }
 
     @Transactional
+    // [SEARCH:CHAT_QA_SYNC] 同步问答完整链路，适合普通非流式客户端。
     public ChatResponse ask(Long userId, ChatRequest request) {
         long started = System.nanoTime();
         boolean useKnowledgeBase = useKnowledgeBase(request);
@@ -136,6 +143,7 @@ public class ChatService {
     }
 
     @Transactional(readOnly = true)
+    // [SEARCH:CHAT_QA_STREAM] 流式问答链路；ready、delta、sources 和 done 是前端消费的事件节点。
     public SseEmitter askStream(Long userId, ChatRequest request) {
         long started = System.nanoTime();
         SseEmitter emitter = new SseEmitter(STREAM_TIMEOUT.toMillis());
@@ -262,6 +270,7 @@ public class ChatService {
     }
 
     @Transactional
+    // [SEARCH:TEACHER_QUESTION] 从知识片段中选择练习依据，并生成可追溯的题目与参考答案。
     public TeacherQuestionResponse teacherQuestion(Long userId, TeacherQuestionRequest request) {
         StudyFolder scopeFolder = requireFolder(request.subjectFolderId() == null ? request.folderId() : request.subjectFolderId(), userId);
         var settings = aiSettingsService.merge(
@@ -288,6 +297,7 @@ public class ChatService {
         return new TeacherQuestionResponse(payload.question(), payload.referenceAnswer(), source, selected.getId());
     }
 
+    // [SEARCH:TEACHER_CHUNK_SELECTION] 综合相关性、历史引用次数和已出题记录选择练题片段。
     private KnowledgeChunk selectTeacherChunk(StudyFolder scopeFolder, Long userId, String requirement, List<Long> excludeChunkIds) {
         List<Long> folderIds = folderScope(scopeFolder, userId);
         List<KnowledgeChunk> candidates = chunkRepository.findExistingByFolderIdInAndOwnerId(folderIds, userId).stream()
@@ -535,6 +545,12 @@ public class ChatService {
         }
     }
 
+    /**
+     * [SEARCH:KNOWLEDGE_RETRIEVAL] 知识检索主流程。
+     *
+     * <p>融合关键词、向量及深度查询候选，随后统一重排并限制同一文件占比，
+     * 避免答案上下文被单份资料垄断。</p>
+     */
     private List<KnowledgeChunk> retrieve(StudyFolder folder,
                                           Long userId,
                                           String question,
@@ -622,6 +638,7 @@ public class ChatService {
         return new ArrayList<>(merged.values());
     }
 
+    // [SEARCH:RETRIEVAL_RERANK] 对多路召回结果重新评分，并执行来源多样性控制。
     private List<KnowledgeChunk> rerankAndDiversify(List<KnowledgeChunk> candidates, String question) {
         if (candidates.isEmpty()) {
             return List.of();
@@ -873,6 +890,7 @@ public class ChatService {
                 """.formatted(role, customInstruction, conversationContext, question);
     }
 
+    // [SEARCH:RAG_PROMPT] 将历史对话、知识片段和引用规则组装为知识库问答提示词。
     private String buildPrompt(QuestionMode mode, String question, List<ConversationMessage> history, List<KnowledgeChunk> chunks, String aiRole, String systemPrompt, boolean withCitations) {
         String context = numberedContext(chunks);
         String conversationContext = conversationContext(history);
@@ -1003,6 +1021,7 @@ public class ChatService {
         return callModel(settings, prompt, DEFAULT_CHAT_MAX_TOKENS, 0.2);
     }
 
+    // [SEARCH:MODEL_CHAT_CALL] 调用 OpenAI 兼容的 Chat Completions 接口，并解析非流式响应。
     private String callModel(com.example.exam.dto.AiSettingsDtos.AiSettingsResponse settings,
                              String prompt,
                              int maxTokens,
@@ -1035,6 +1054,7 @@ public class ChatService {
         return null;
     }
 
+    // [SEARCH:MODEL_CHAT_STREAM] 解析模型 SSE 数据，将增量文本逐段转发给业务层回调。
     private String callModelStream(com.example.exam.dto.AiSettingsDtos.AiSettingsResponse settings,
                                    String prompt,
                                    int maxTokens,

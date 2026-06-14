@@ -20,6 +20,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+/**
+ * [SEARCH:FOLDER_MANAGEMENT] 知识库目录树管理服务。
+ *
+ * <p>负责目录层级限制、所有权校验，以及删除目录时关联文件、片段、索引和本地文件的清理。</p>
+ */
 public class FolderService {
     private static final int MAX_FOLDER_DEPTH = 3;
 
@@ -99,6 +104,7 @@ public class FolderService {
         }
     }
 
+    // [SEARCH:FOLDER_OWNERSHIP] 所有目录业务共用的用户归属校验入口。
     public StudyFolder requireOwned(Long folderId, Long userId) {
         return folderRepository.findByIdAndOwnerId(folderId, userId)
                 .orElseThrow(() -> new IllegalArgumentException("Folder not found or access denied"));

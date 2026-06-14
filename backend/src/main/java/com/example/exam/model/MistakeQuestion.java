@@ -6,6 +6,11 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 @Entity
+/**
+ * [SEARCH:ENTITY_MISTAKE_QUESTION] 一道归属于用户的错题记录。
+ *
+ * <p>题干和解析既可使用文本，也可引用本地附件；学科、状态和知识片段关联由独立关系维护。</p>
+ */
 public class MistakeQuestion {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,6 +31,7 @@ public class MistakeQuestion {
     private Set<MistakeSubjectTag> subjectTags = new LinkedHashSet<>();
 
     @Column(nullable = false, columnDefinition = "boolean default false")
+    // “已掌握”是固定终态；未掌握阶段可再通过自定义状态细分。
     private boolean mastered;
 
     @Lob

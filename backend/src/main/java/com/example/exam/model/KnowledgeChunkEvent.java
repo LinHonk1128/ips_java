@@ -4,6 +4,11 @@ import jakarta.persistence.*;
 import java.time.Instant;
 
 @Entity
+/**
+ * [SEARCH:ENTITY_KNOWLEDGE_EVENT] 知识片段行为事件明细。
+ *
+ * <p>与片段上的累计计数互补，用于按时间窗口计算趋势、近期正确率和复习压力。</p>
+ */
 public class KnowledgeChunkEvent {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,9 +28,11 @@ public class KnowledgeChunkEvent {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
+    // 区分引用、主观反馈、练习答对和练习答错等行为来源。
     private KnowledgeChunkEventType eventType;
 
     @Column
+    // 引用事件没有正误含义，因此该字段允许为空。
     private Boolean correct;
 
     @Column(nullable = false)

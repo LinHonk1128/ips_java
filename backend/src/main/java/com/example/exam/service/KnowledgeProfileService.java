@@ -52,6 +52,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+/**
+ * [SEARCH:KNOWLEDGE_PROFILE] 知识画像统计与诊断服务。
+ *
+ * <p>以知识片段累计指标和行为事件为基础，计算覆盖率、掌握度、置信度、
+ * 遗忘风险、复习压力及可加入学习计划的建议。</p>
+ */
 public class KnowledgeProfileService {
     private static final int RECENT_DAYS = 14;
     private static final int MIN_DIAGNOSIS_FEEDBACK_COUNT = 3;
@@ -83,6 +89,7 @@ public class KnowledgeProfileService {
     }
 
     @Transactional(readOnly = true)
+    // [SEARCH:PROFILE_OVERVIEW] 聚合用户级画像指标和考试倒计时。
     public OverviewResponse overview(Long userId) {
         List<KnowledgeChunk> chunks = allChunks(userId);
         RecentMetrics recent = recentMetrics(chunks, recentEvents(userId, RECENT_DAYS));
@@ -113,6 +120,7 @@ public class KnowledgeProfileService {
     }
 
     @Transactional(readOnly = true)
+    // [SEARCH:PROFILE_SUBJECTS] 按学科根目录及其后代目录汇总知识片段指标。
     public List<SubjectProfileResponse> subjects(Long userId) {
         List<StudyFolder> folders = folderRepository.findByOwnerIdOrderByCreatedAtDesc(userId);
         List<StudyFolder> subjectFolders = folders.stream()
@@ -196,6 +204,7 @@ public class KnowledgeProfileService {
     }
 
     @Transactional(readOnly = true)
+    // [SEARCH:PROFILE_WEAK_CHUNKS] 输出掌握度较低且具备复习价值的知识片段。
     public List<WeakChunkResponse> weakChunks(Long userId) {
         return allChunks(userId).stream()
                 .filter(this::isWeakChunkCandidate)
@@ -219,6 +228,7 @@ public class KnowledgeProfileService {
     }
 
     @Transactional(readOnly = true)
+    // [SEARCH:CHUNK_SEARCH] 为错题关联、画像跳转等场景提供限定目录和文件的片段搜索。
     public List<ChunkSearchResponse> searchChunks(Long userId, Long folderId, Long fileId, String query, int limit) {
         Set<Long> folderIds = scopedFolderIds(userId, folderId);
         if (folderIds.isEmpty()) {
@@ -288,6 +298,7 @@ public class KnowledgeProfileService {
     }
 
     @Transactional(readOnly = true)
+    // [SEARCH:PROFILE_RISK] 结合掌握度、遗忘间隔和近期行为计算知识风险。
     public RiskResponse risk(Long userId, int days, Long folderId) {
         int normalizedDays = normalizeDays(days);
         RiskContext context = riskContext(userId, folderId);
@@ -301,6 +312,7 @@ public class KnowledgeProfileService {
     }
 
     @Transactional(readOnly = true)
+    // [SEARCH:PROFILE_DIAGNOSIS] 先生成规则诊断；条件允许时再调用模型润色，不让模型替代统计事实。
     public DiagnosisResponse diagnosis(Long userId, int days, boolean ai) {
         int normalizedDays = normalizeDays(days);
         ActivityResponse activity = activity(userId, normalizedDays);
@@ -912,6 +924,7 @@ public class KnowledgeProfileService {
         return eventRepository.findByOwnerIdAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(userId, start);
     }
 
+    // [SEARCH:PROFILE_RECENT_METRICS] 将时间窗口内的事件归并为近期练习次数和正确率。
     private RecentMetrics recentMetrics(List<KnowledgeChunk> chunks, List<KnowledgeChunkEvent> events) {
         Set<Long> chunkIds = chunks.stream().map(KnowledgeChunk::getId).collect(java.util.stream.Collectors.toSet());
         long practiceCount = 0;
@@ -938,6 +951,7 @@ public class KnowledgeProfileService {
                 || event.getEventType() == KnowledgeChunkEventType.PRACTICE_WRONG;
     }
 
+    // [SEARCH:PROFILE_REVIEW_PRIORITY] 用掌握度、错误次数和距离上次练习的时间排序复习优先级。
     private double reviewPriority(KnowledgeChunk chunk) {
         int citeBase = Math.max(1, chunk.getCiteCount());
         double attentionScore = Math.log1p(chunk.getCiteCount()) / Math.log1p(citeBase);

@@ -4,6 +4,11 @@ import jakarta.persistence.*;
 import java.time.Instant;
 
 @Entity
+/**
+ * [SEARCH:ENTITY_MISTAKE_PRACTICE_EVENT] 单次错题复习结果事件。
+ *
+ * <p>保留时间维度的答题结果，供画像统计近期练习活跃度和正确率。</p>
+ */
 public class MistakePracticeEvent {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

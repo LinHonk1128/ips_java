@@ -15,6 +15,11 @@ import java.util.Map;
 import org.springframework.stereotype.Service;
 
 @Service
+/**
+ * [SEARCH:EMBEDDING] 文本向量生成适配层。
+ *
+ * <p>使用用户配置的 OpenAI 兼容 Embeddings 接口；调用失败时返回空向量，由上层降级检索。</p>
+ */
 public class EmbeddingService {
     private static final Duration EMBEDDING_TIMEOUT = Duration.ofSeconds(5);
 
@@ -23,6 +28,7 @@ public class EmbeddingService {
             .connectTimeout(Duration.ofSeconds(3))
             .build();
 
+    // [SEARCH:EMBEDDING_CALL] 生成单段文本向量，并校验模型响应中的向量数组。
     public List<Float> embed(String input, AiSettingsResponse settings) {
         if (input == null || input.isBlank() || settings.embeddingApiKey() == null || settings.embeddingApiKey().isBlank()) {
             return List.of();

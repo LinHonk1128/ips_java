@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_PAGE_ROUTER] 工作区页面分发器，根据 activePage 渲染对应业务页面。 -->
 <template>
   <HomeView v-if="activePage === 'home'" />
   <KnowledgeLandingView v-else-if="activePage === 'knowledge' && !knowledgeModule" />

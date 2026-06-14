@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_STUDY_PLAN] 学习规划页面，包含手工日程和 AI 草稿预览两种工作流。 -->
 <template>
 <section class="page-panel planner-page">
           <div v-if="!planModule" class="planner-module-landing">

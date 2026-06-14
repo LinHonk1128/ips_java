@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_LIBRARY] 资料库页面，负责目录树、文件列表、移动和知识库启停操作。 -->
 <template>
 <section class="page-panel library-page">
           <div class="section-head split">

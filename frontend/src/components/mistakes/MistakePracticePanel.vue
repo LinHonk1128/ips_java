@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_MISTAKE_PRACTICE] 错题复习面板，负责题组进度、计时和作答结果提交。 -->
 <template>
 <div class="practice-panel">
             <div class="section-head split">

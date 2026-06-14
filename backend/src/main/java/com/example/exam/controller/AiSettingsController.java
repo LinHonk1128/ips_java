@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/ai-settings")
+// [SEARCH:API_AI_SETTINGS] 用户模型配置和配置预设接口入口。
 public class AiSettingsController {
     private final AiSettingsService aiSettingsService;
     private final CurrentUserService currentUserService;

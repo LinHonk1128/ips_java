@@ -17,6 +17,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+/**
+ * [SEARCH:STUDY_PROFILE] 用户备考档案与首次引导服务。
+ *
+ * <p>维护考试日期和科目数量，并将科目设置同步为知识库顶层学科目录。</p>
+ */
 public class StudyProfileService {
     private final UserStudyProfileRepository profileRepository;
     private final StudyFolderRepository folderRepository;
@@ -38,6 +43,7 @@ public class StudyProfileService {
     }
 
     @Transactional
+    // [SEARCH:ONBOARDING] 完成首次设置，并创建或同步用户的学科目录。
     public StudyProfileResponse onboard(Long userId, OnboardingRequest request) {
         if (profileRepository.existsByOwnerId(userId)) {
             UserStudyProfile existing = profileRepository.findByOwnerId(userId).orElseThrow();
@@ -97,6 +103,7 @@ public class StudyProfileService {
         return toResponse(userId, profile);
     }
 
+    // [SEARCH:SUBJECT_FOLDER_SYNC] 让个人科目配置与顶层学科文件夹保持一致。
     private void syncSubjectFolders(Long userId, List<String> subjects) {
         User owner = userRepository.findById(userId).orElseThrow(() -> new IllegalArgumentException("User not found"));
         List<StudyFolder> subjectRoots = folderRepository.findByOwnerIdAndSubjectFolderTrueOrderBySubjectOrderAscCreatedAtAsc(userId)

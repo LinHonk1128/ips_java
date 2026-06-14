@@ -1,3 +1,4 @@
+<!-- [SEARCH:VIEW_KNOWLEDGE_PROFILE] 知识画像页面，展示掌握度、风险、趋势和复习建议。 -->
 <template>
 <section class="page-panel profile-page">
           <div class="section-head split">

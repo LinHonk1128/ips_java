@@ -26,6 +26,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
+/**
+ * [SEARCH:FILE_MANAGEMENT] 资料文件业务入口。
+ *
+ * <p>负责文件上传、文本更新、目录移动和知识库启停；文件内容发生变化时，
+ * 会重新生成 {@link KnowledgeChunk} 并同步全文/向量检索索引。</p>
+ */
 public class FileService {
     private static final int PAGE_SIZE = 3500;
     private static final int CHUNKING_VERSION = 2;
@@ -76,6 +82,7 @@ public class FileService {
     }
 
     @Transactional
+    // [SEARCH:FILE_UPLOAD] 文件上传主流程：落盘 -> 文本抽取 -> 保存元数据 -> 构建知识片段。
     public FileResponse upload(Long folderId, Long userId, FileTag tag, MultipartFile multipartFile) throws IOException {
         StudyFolder folder = folderService.requireOwned(folderId, userId);
         Files.createDirectories(uploadDir.resolve(String.valueOf(userId)).resolve(String.valueOf(folderId)));
@@ -182,6 +189,11 @@ public class FileService {
         Files.deleteIfExists(Path.of(file.getStoredPath()));
     }
 
+    /**
+     * [SEARCH:KNOWLEDGE_INDEX_REBUILD] 重建单个文件的知识索引。
+     *
+     * <p>数据库中的片段是检索和画像统计的事实来源；Elasticsearch 索引是可重建的检索副本。</p>
+     */
     private void rebuildKnowledge(StudyFile file, Long userId) {
         chunkRepository.deleteByFileId(file.getId());
         if (!file.isKnowledgeEnabled()) {
@@ -210,6 +222,7 @@ public class FileService {
 
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
+    // [SEARCH:KNOWLEDGE_BACKFILL] 启动时补建缺失、分页异常或算法版本过旧的知识片段。
     public void backfillKnowledgeForExistingFiles() {
         for (StudyFile file : fileRepository.findByKnowledgeEnabledTrue()) {
             if (chunkRepository.countByFileId(file.getId()) == 0
@@ -241,6 +254,12 @@ public class FileService {
         return Math.max(1, (int) Math.ceil(text.length() / (double) PAGE_SIZE));
     }
 
+    /**
+     * [SEARCH:SEMANTIC_CHUNKING] 语义切片主算法。
+     *
+     * <p>先按标题、段落和句子形成文本单元，再按目标长度、自然结束位置和主题边界合并；
+     * 相邻片段保留句子级重叠，末尾过短片段会尝试回并。</p>
+     */
     private List<SemanticChunk> splitIntoSemanticChunks(String text) {
         List<TextUnit> units = splitIntoTextUnits(text);
         if (units.isEmpty()) {
@@ -284,6 +303,7 @@ public class FileService {
         return mergeShortTail(chunks);
     }
 
+    // [SEARCH:SEMANTIC_TEXT_UNITS] 将原文转换成保留标题、段落起点和字符偏移的最小语义单元。
     private List<TextUnit> splitIntoTextUnits(String text) {
         String normalized = text.replace("\r\n", "\n").replace('\r', '\n');
         String[] lines = normalized.split("\n", -1);
@@ -365,6 +385,7 @@ public class FileService {
         return parts;
     }
 
+    // [SEARCH:SEMANTIC_BOUNDARY] 判断标题、段落或主题转折是否应成为新片段边界。
     private boolean shouldStartNewChunk(List<TextUnit> current, TextUnit unit) {
         if (current.isEmpty()) {
             return false;
@@ -427,6 +448,7 @@ public class FileService {
         return tail;
     }
 
+    // [SEARCH:SEMANTIC_TAIL_MERGE] 避免全文末尾产生信息量过低、难以独立召回的短片段。
     private List<SemanticChunk> mergeShortTail(List<SemanticChunk> chunks) {
         if (chunks.size() < 2) {
             return chunks;
